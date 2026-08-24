@@ -18,7 +18,22 @@ export function validateRequest<T>(
       return;
     }
 
-    req[target] = result.data;
+    // Express 5 exposes read-only getters for `query` (and sometimes `params`).
+    // Always keep a typed copy on the request; mutate only when writable.
+    if (target === "body") {
+      req.validatedBody = result.data;
+      req.body = result.data;
+    } else if (target === "query") {
+      req.validatedQuery = result.data;
+    } else {
+      req.validatedParams = result.data;
+      try {
+        Object.assign(req.params, result.data as Record<string, string>);
+      } catch {
+        // Params may be read-only; controllers can use validatedParams.
+      }
+    }
+
     next();
   };
 }

@@ -1,4 +1,5 @@
 import { expenseRepository } from "../repositories/expense.repository.js";
+import { messageRepository } from "../repositories/message.repository.js";
 import type {
   CreateExpenseInput,
   SearchExpensesInput,
@@ -6,14 +7,27 @@ import type {
 } from "../schemas/expense.schema.js";
 import type { ExpenseDocument } from "../models/expense.model.js";
 import { ApiError } from "../utils/api-error.js";
+import { presentMoney } from "../utils/format-currency.js";
+
+export {
+  formatCurrencyAmount,
+  formatGroupedAmount,
+  presentMoney,
+  type FormatCurrencyOptions,
+  type MoneyPresentation,
+} from "../utils/format-currency.js";
 
 export type SafeExpense = {
   id: string;
   userId: string;
   amount: number;
+  currency: string;
+  formattedAmount: string;
   category: string;
   note: string;
   date: string;
+  sourceThreadId?: string;
+  sourceMessageId?: string;
   createdAt: string;
   updatedAt: string;
 };
@@ -31,13 +45,23 @@ function toDateOnlyString(date: Date): string {
 }
 
 function toSafeExpense(expense: ExpenseDocument): SafeExpense {
+  const money = presentMoney(expense.amount, expense.currency);
+
   return {
     id: String(expense._id),
     userId: String(expense.userId),
-    amount: expense.amount,
+    amount: money.amount,
+    currency: money.currency,
+    formattedAmount: money.formattedAmount,
     category: expense.category,
     note: expense.note,
     date: toDateOnlyString(expense.date),
+    ...(expense.sourceThreadId
+      ? { sourceThreadId: String(expense.sourceThreadId) }
+      : {}),
+    ...(expense.sourceMessageId
+      ? { sourceMessageId: String(expense.sourceMessageId) }
+      : {}),
     createdAt: expense.createdAt.toISOString(),
     updatedAt: expense.updatedAt.toISOString(),
   };
@@ -48,10 +72,52 @@ export const expenseService = {
     const expense = await expenseRepository.create({
       userId,
       amount: input.amount,
+      currency: input.currency,
       category: input.category,
       note: input.note,
       date: startOfUtcDay(input.date),
     });
+
+    return toSafeExpense(expense);
+  },
+
+  /**
+   * Creates an expense linked to a chat message. Reserved for agentic AI tools —
+   * not exposed on public REST routes yet.
+   */
+  async createFromChat(
+    userId: string,
+    threadId: string,
+    messageId: string,
+    input: CreateExpenseInput,
+  ): Promise<SafeExpense> {
+    const message = await messageRepository.findByIdForThread(
+      messageId,
+      threadId,
+      userId,
+    );
+
+    if (!message) {
+      throw ApiError.notFound("Message not found");
+    }
+
+    const expense = await expenseRepository.create({
+      userId,
+      amount: input.amount,
+      currency: input.currency,
+      category: input.category,
+      note: input.note,
+      date: startOfUtcDay(input.date),
+      sourceThreadId: threadId,
+      sourceMessageId: messageId,
+    });
+
+    await messageRepository.addExpenseId(
+      messageId,
+      threadId,
+      userId,
+      String(expense._id),
+    );
 
     return toSafeExpense(expense);
   },
@@ -78,6 +144,7 @@ export const expenseService = {
   ): Promise<SafeExpense> {
     const updates: {
       amount?: number;
+      currency?: string;
       category?: string;
       note?: string;
       date?: Date;
@@ -85,6 +152,9 @@ export const expenseService = {
 
     if (input.amount !== undefined) {
       updates.amount = input.amount;
+    }
+    if (input.currency !== undefined) {
+      updates.currency = input.currency;
     }
     if (input.category !== undefined) {
       updates.category = input.category;

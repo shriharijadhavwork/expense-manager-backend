@@ -1,7 +1,14 @@
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { config as loadEnv } from "dotenv";
 import { z } from "zod";
 
-loadEnv();
+loadEnv({
+  path: path.resolve(
+    path.dirname(fileURLToPath(import.meta.url)),
+    "../../.env",
+  ),
+});
 
 const envSchema = z.object({
   PORT: z.coerce.number().int().positive().default(5050),
@@ -12,6 +19,11 @@ const envSchema = z.object({
     .min(16, "JWT_SECRET must be at least 16 characters"),
   JWT_EXPIRES_IN: z.string().min(1, "JWT_EXPIRES_IN is required"),
   FRONTEND_URL: z.url("FRONTEND_URL must be a valid URL"),
+  CLOUDINARY_CLOUD_NAME: z.string().min(1, "CLOUDINARY_CLOUD_NAME is required"),
+  CLOUDINARY_API_KEY: z.string().min(1, "CLOUDINARY_API_KEY is required"),
+  CLOUDINARY_API_SECRET: z
+    .string()
+    .min(1, "CLOUDINARY_API_SECRET is required"),
 });
 
 const parsed = envSchema.safeParse(process.env);

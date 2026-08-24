@@ -1,11 +1,15 @@
 import mongoose, { Schema, type HydratedDocument, type Model } from "mongoose";
+import { DEFAULT_CURRENCY } from "../constants/currency.js";
 
 export interface IExpense {
   userId: mongoose.Types.ObjectId;
   amount: number;
+  currency: string;
   category: string;
   note: string;
   date: Date;
+  sourceThreadId?: mongoose.Types.ObjectId;
+  sourceMessageId?: mongoose.Types.ObjectId;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -26,6 +30,16 @@ const expenseSchema = new Schema<IExpense>(
       required: true,
       min: 0,
     },
+    currency: {
+      type: String,
+      required: true,
+      trim: true,
+      uppercase: true,
+      default: DEFAULT_CURRENCY,
+      minlength: 3,
+      maxlength: 3,
+      index: true,
+    },
     category: {
       type: String,
       required: true,
@@ -44,6 +58,16 @@ const expenseSchema = new Schema<IExpense>(
       required: true,
       index: true,
     },
+    sourceThreadId: {
+      type: Schema.Types.ObjectId,
+      ref: "Thread",
+      index: true,
+    },
+    sourceMessageId: {
+      type: Schema.Types.ObjectId,
+      ref: "Message",
+      index: true,
+    },
   },
   {
     timestamps: true,
@@ -53,9 +77,16 @@ const expenseSchema = new Schema<IExpense>(
           id: String(ret["_id"]),
           userId: String(ret["userId"]),
           amount: ret["amount"],
+          currency: ret["currency"],
           category: ret["category"],
           note: ret["note"],
           date: ret["date"],
+          ...(ret["sourceThreadId"]
+            ? { sourceThreadId: String(ret["sourceThreadId"]) }
+            : {}),
+          ...(ret["sourceMessageId"]
+            ? { sourceMessageId: String(ret["sourceMessageId"]) }
+            : {}),
           createdAt: ret["createdAt"],
           updatedAt: ret["updatedAt"],
         };

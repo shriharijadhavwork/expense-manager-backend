@@ -1,7 +1,14 @@
+export type SafeUserPreferences = {
+  theme: "light" | "dark" | "system";
+  timezone: string;
+  defaultCurrency: string;
+};
+
 export type SafeUser = {
   id: string;
   name: string;
   email: string;
+  preferences: SafeUserPreferences;
 };
 
 export type AuthResult = {

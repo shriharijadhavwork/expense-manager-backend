@@ -9,6 +9,9 @@ process.env["JWT_SECRET"] = "test-jwt-secret-16chars";
 process.env["JWT_EXPIRES_IN"] = "1h";
 process.env["FRONTEND_URL"] = "http://localhost:3000";
 process.env["MONGODB_URI"] = "mongodb://127.0.0.1:27017/expense-manager-test";
+process.env["CLOUDINARY_CLOUD_NAME"] = "test-cloud";
+process.env["CLOUDINARY_API_KEY"] = "test-key";
+process.env["CLOUDINARY_API_SECRET"] = "test-secret";
 
 let mongoServer: MongoMemoryServer;
 let app: ReturnType<typeof import("../src/app.js").createApp>;
@@ -29,6 +32,8 @@ type ExpenseResponse = {
     id: string;
     userId: string;
     amount: number;
+    currency: string;
+    formattedAmount: string;
     category: string;
     note: string;
     date: string;
@@ -41,6 +46,8 @@ type ExpenseListResponse = {
     id: string;
     userId: string;
     amount: number;
+    currency: string;
+    formattedAmount: string;
     category: string;
     note: string;
     date: string;
@@ -95,6 +102,7 @@ describe("Expense API", () => {
       .set("Authorization", `Bearer ${auth.token}`)
       .send({
         amount: 500,
+        currency: "INR",
         category: "Food",
         note: "Lunch",
         date: "2026-08-24",
@@ -105,6 +113,8 @@ describe("Expense API", () => {
     expect(body.success).toBe(true);
     expect(body.data.userId).toBe(auth.user.id);
     expect(body.data.amount).toBe(500);
+    expect(body.data.currency).toBe("INR");
+    expect(body.data.formattedAmount).toBe("500");
     expect(body.data.category).toBe("food");
     expect(body.data.note).toBe("Lunch");
     expect(body.data.date).toBe("2026-08-24");
@@ -120,6 +130,7 @@ describe("Expense API", () => {
       .set("Authorization", `Bearer ${alice.token}`)
       .send({
         amount: 100,
+        currency: "INR",
         category: "food",
         note: "Alice expense",
         date: "2026-08-10",
@@ -131,6 +142,7 @@ describe("Expense API", () => {
       .set("Authorization", `Bearer ${bob.token}`)
       .send({
         amount: 200,
+        currency: "INR",
         category: "travel",
         note: "Bob expense",
         date: "2026-08-11",
@@ -156,6 +168,7 @@ describe("Expense API", () => {
       .set("Authorization", `Bearer ${auth.token}`)
       .send({
         amount: 75,
+        currency: "INR",
         category: "transport",
         note: "Taxi",
         date: "2026-08-12",
@@ -180,6 +193,7 @@ describe("Expense API", () => {
       .set("Authorization", `Bearer ${auth.token}`)
       .send({
         amount: 50,
+        currency: "INR",
         category: "food",
         note: "Snack",
         date: "2026-08-13",
@@ -193,6 +207,7 @@ describe("Expense API", () => {
       .set("Authorization", `Bearer ${auth.token}`)
       .send({
         amount: 80,
+        currency: "INR",
         note: "Updated snack",
       })
       .expect(200);
@@ -211,6 +226,7 @@ describe("Expense API", () => {
       .set("Authorization", `Bearer ${auth.token}`)
       .send({
         amount: 40,
+        currency: "INR",
         category: "food",
         note: "Coffee",
         date: "2026-08-14",
@@ -238,6 +254,7 @@ describe("Expense API", () => {
       .set("Authorization", `Bearer ${auth.token}`)
       .send({
         amount: 10,
+        currency: "INR",
         category: "food",
         note: "A",
         date: "2026-08-01",
@@ -261,6 +278,7 @@ describe("Expense API", () => {
       .set("Authorization", `Bearer ${auth.token}`)
       .send({
         amount: 20,
+        currency: "INR",
         category: "food",
         note: "Food",
         date: "2026-08-02",
@@ -272,6 +290,7 @@ describe("Expense API", () => {
       .set("Authorization", `Bearer ${auth.token}`)
       .send({
         amount: 30,
+        currency: "INR",
         category: "travel",
         note: "Travel",
         date: "2026-08-03",
@@ -302,6 +321,7 @@ describe("Expense API", () => {
         .set("Authorization", `Bearer ${auth.token}`)
         .send({
           amount,
+          currency: "INR",
           category: "food",
           note: date,
           date,
@@ -331,6 +351,7 @@ describe("Expense API", () => {
       .set("Authorization", `Bearer ${auth.token}`)
       .send({
         amount: 10,
+        currency: "INR",
         category: "food",
         note: "in range food",
         date: "2026-08-15",
@@ -342,6 +363,7 @@ describe("Expense API", () => {
       .set("Authorization", `Bearer ${auth.token}`)
       .send({
         amount: 20,
+        currency: "INR",
         category: "travel",
         note: "in range travel",
         date: "2026-08-16",
@@ -353,6 +375,7 @@ describe("Expense API", () => {
       .set("Authorization", `Bearer ${auth.token}`)
       .send({
         amount: 30,
+        currency: "INR",
         category: "food",
         note: "out of range food",
         date: "2026-07-01",
@@ -374,6 +397,48 @@ describe("Expense API", () => {
     expect(body.data[0]?.note).toBe("in range food");
   });
 
+  it("stores amount and currency separately", async () => {
+    const auth = await signup("Alice", "alice-currency@example.com");
+
+    const response = await request(app)
+      .post("/api/v1/expenses")
+      .set("Authorization", `Bearer ${auth.token}`)
+      .send({
+        amount: 10,
+        currency: "USD",
+        category: "food",
+        note: "Dollar spend",
+        date: "2026-08-24",
+      })
+      .expect(201);
+
+    const body = response.body as ExpenseResponse;
+    expect(body.data.amount).toBe(10);
+    expect(body.data.currency).toBe("USD");
+    expect(body.data.formattedAmount).toBe("10");
+  });
+
+  it("rejects unsupported currency codes", async () => {
+    const auth = await signup("Alice", "alice-bad-currency@example.com");
+
+    const response = await request(app)
+      .post("/api/v1/expenses")
+      .set("Authorization", `Bearer ${auth.token}`)
+      .send({
+        amount: 10,
+        currency: "XYZ",
+        category: "food",
+        note: "bad currency",
+        date: "2026-08-24",
+      })
+      .expect(400);
+
+    expect(response.body).toMatchObject({
+      success: false,
+      error: { code: "VALIDATION_ERROR" },
+    });
+  });
+
   it("rejects invalid create input", async () => {
     const auth = await signup("Alice", "alice-invalid@example.com");
 
@@ -382,6 +447,7 @@ describe("Expense API", () => {
       .set("Authorization", `Bearer ${auth.token}`)
       .send({
         amount: -5,
+        currency: "INR",
         category: "",
         note: "bad",
         date: "not-a-date",
@@ -418,6 +484,7 @@ describe("Expense API", () => {
       .post("/api/v1/expenses")
       .send({
         amount: 10,
+        currency: "INR",
         category: "food",
         note: "x",
         date: "2026-08-01",
@@ -434,6 +501,7 @@ describe("Expense API", () => {
       .set("Authorization", `Bearer ${alice.token}`)
       .send({
         amount: 999,
+        currency: "INR",
         category: "food",
         note: "Alice secret",
         date: "2026-08-20",
@@ -488,6 +556,7 @@ describe("Expense API", () => {
       .set("Authorization", `Bearer ${alice.token}`)
       .send({
         amount: 15,
+        currency: "INR",
         category: "food",
         note: "owned by alice",
         date: "2026-08-21",
@@ -505,5 +574,60 @@ describe("Expense API", () => {
       .get("/api/v1/expenses/not-an-object-id")
       .set("Authorization", `Bearer ${auth.token}`)
       .expect(400);
+  });
+
+  it("links expenses created from chat via createFromChat service", async () => {
+    const auth = await signup("Alice", "alice-chat-expense@example.com");
+
+    const threadResponse = await request(app)
+      .post("/api/v1/threads")
+      .set("Authorization", `Bearer ${auth.token}`)
+      .send({ title: "Food chat" })
+      .expect(201);
+
+    const threadId = (
+      threadResponse.body as { success: true; data: { id: string } }
+    ).data.id;
+
+    const messageResponse = await request(app)
+      .post(`/api/v1/threads/${threadId}/messages`)
+      .set("Authorization", `Bearer ${auth.token}`)
+      .send({ content: "Spent 500 on lunch" })
+      .expect(201);
+
+    const messageId = (
+      messageResponse.body as { success: true; data: { id: string } }
+    ).data.id;
+
+    const { expenseService } = await import("../src/services/expense.service.js");
+    const expense = await expenseService.createFromChat(
+      auth.user.id,
+      threadId,
+      messageId,
+      {
+        amount: 500,
+        currency: "INR",
+        category: "food",
+        note: "Lunch",
+        date: "2026-08-24",
+      },
+    );
+
+    expect(expense.sourceThreadId).toBe(threadId);
+    expect(expense.sourceMessageId).toBe(messageId);
+
+    const messages = await request(app)
+      .get(`/api/v1/threads/${threadId}/messages`)
+      .set("Authorization", `Bearer ${auth.token}`)
+      .expect(200);
+
+    const items = (
+      messages.body as {
+        success: true;
+        data: { items: Array<{ id: string; expenseIds: string[] }> };
+      }
+    ).data.items;
+
+    expect(items[0]?.expenseIds).toContain(expense.id);
   });
 });

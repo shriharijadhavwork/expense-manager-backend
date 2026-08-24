@@ -4,6 +4,7 @@ import { authController } from "../controllers/auth.controller.js";
 import { authenticate } from "../middlewares/auth.middleware.js";
 import { validateRequest } from "../middlewares/validate.middleware.js";
 import { loginSchema, signupSchema } from "../schemas/auth.schema.js";
+import { updateMeSchema } from "../schemas/user-preferences.schema.js";
 
 const authRateLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -38,5 +39,12 @@ authRouter.post(
 authRouter.post("/logout", authController.logout);
 
 authRouter.get("/me", authenticate, authController.me);
+
+authRouter.patch(
+  "/me",
+  authenticate,
+  validateRequest(updateMeSchema),
+  authController.updateMe,
+);
 
 export { authRouter };

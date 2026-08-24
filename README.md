@@ -73,6 +73,11 @@ Base path: `/api/v1`
 | `POST` | `/auth/login` | No | Authenticate and return access token |
 | `POST` | `/auth/logout` | No | Client-oriented logout contract |
 | `GET` | `/auth/me` | Bearer JWT | Current authenticated user |
+| `POST` | `/threads` | Bearer JWT | Create a conversation thread |
+| `GET` | `/threads` | Bearer JWT | List threads (`?status=active\|archived`, default active) |
+| `GET` | `/threads/:id` | Bearer JWT | Get one thread |
+| `PATCH` | `/threads/:id` | Bearer JWT | Rename or change status |
+| `DELETE` | `/threads/:id` | Bearer JWT | Soft-delete (archive) a thread |
 | `POST` | `/expenses` | Bearer JWT | Create an expense |
 | `GET` | `/expenses` | Bearer JWT | List the current user's expenses (no query filters) |
 | `POST` | `/expenses/search` | Bearer JWT | Search/filter expenses via request body |
@@ -111,6 +116,100 @@ Content-Type: application/json
 GET /api/v1/auth/me
 Authorization: Bearer <token>
 ```
+
+### Create thread
+
+```http
+POST /api/v1/threads
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{
+  "title": "Paradise lunch"
+}
+```
+
+Omit `title` to use the default `"New conversation"`. `DELETE /threads/:id` archives the thread (soft delete). List archived threads with `GET /threads?status=archived`.
+
+### List thread messages
+
+Cursor-based pagination (newest page first; items returned in chronological order):
+
+```http
+GET /api/v1/threads/:id/messages?limit=30&before=<messageId>
+Authorization: Bearer <token>
+```
+
+Response:
+
+```json
+{
+  "success": true,
+  "data": {
+    "items": [],
+    "hasMore": true,
+    "nextCursor": "<oldestMessageIdInThisPage>"
+  }
+}
+```
+
+`limit` defaults to `30` (max `50`). Omit `before` for the latest page. Pass `before` with `nextCursor` to load older messages.
+
+### Create thread message
+
+Persists a user message only (no AI/agent response yet):
+
+```http
+POST /api/v1/threads/:id/messages
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{
+  "content": "Split the lunch bill from yesterday"
+}
+```
+
+Creating a message updates the thread's `lastActivityAt`. Messages cannot be added to archived threads. Pass `attachmentIds` from the upload endpoint to attach files to a message.
+
+### Upload chat attachment
+
+Files are uploaded to **Cloudinary** and metadata is stored in MongoDB. Allowed types match the frontend policy: JPG, PNG, WebP, HEIC, PDF, DOC/DOCX (max 8 MB). GIF, video, and audio are rejected.
+
+Required env vars: `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET`.
+
+```http
+POST /api/v1/files/upload
+Authorization: Bearer <token>
+Content-Type: multipart/form-data
+
+file=<binary>
+```
+
+Response metadata:
+
+```json
+{
+  "success": true,
+  "data": {
+    "id": "...",
+    "name": "receipt.jpg",
+    "mimeType": "image/jpeg",
+    "size": 12345,
+    "kind": "image",
+    "url": "https://res.cloudinary.com/...",
+    "createdAt": "2026-08-24T12:00:00.000Z"
+  }
+}
+```
+
+Fetch metadata (owner only):
+
+```http
+GET /api/v1/files/:id
+Authorization: Bearer <token>
+```
+
+Use the returned `url` to display or open the file in the client. For images, `url` uses Cloudinary auto-format and auto-quality (`f_auto`, `q_auto`), and `thumbnailUrl` provides a size-limited preview for chat. Message attachments reference file ids via `attachmentIds`.
 
 ### Create expense
 

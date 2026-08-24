@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { currencySchema } from "../constants/currency.js";
 
 const dateOnlySchema = z
   .string()
@@ -18,6 +19,7 @@ export const createExpenseSchema = z.object({
   ),
   note: z.string().trim().max(1000, "Note must be at most 1000 characters").default(""),
   date: dateOnlySchema,
+  currency: currencySchema,
 });
 
 export const updateExpenseSchema = z
@@ -39,13 +41,15 @@ export const updateExpenseSchema = z
       .max(1000, "Note must be at most 1000 characters")
       .optional(),
     date: dateOnlySchema.optional(),
+    currency: currencySchema.optional(),
   })
   .refine(
     (value) =>
       value.amount !== undefined ||
       value.category !== undefined ||
       value.note !== undefined ||
-      value.date !== undefined,
+      value.date !== undefined ||
+      value.currency !== undefined,
     { message: "At least one field must be provided" },
   );
 

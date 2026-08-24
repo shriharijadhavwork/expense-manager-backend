@@ -4,13 +4,17 @@ import { Expense, type ExpenseDocument } from "../models/expense.model.js";
 export type CreateExpenseRecord = {
   userId: string;
   amount: number;
+  currency: string;
   category: string;
   note: string;
   date: Date;
+  sourceThreadId?: string;
+  sourceMessageId?: string;
 };
 
 export type UpdateExpenseRecord = {
   amount?: number;
+  currency?: string;
   category?: string;
   note?: string;
   date?: Date;
@@ -41,9 +45,16 @@ export const expenseRepository = {
     return Expense.create({
       userId: toObjectId(input.userId),
       amount: input.amount,
+      currency: input.currency,
       category: input.category,
       note: input.note,
       date: input.date,
+      ...(input.sourceThreadId
+        ? { sourceThreadId: toObjectId(input.sourceThreadId) }
+        : {}),
+      ...(input.sourceMessageId
+        ? { sourceMessageId: toObjectId(input.sourceMessageId) }
+        : {}),
     });
   },
 
