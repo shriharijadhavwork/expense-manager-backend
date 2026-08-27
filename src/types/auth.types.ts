@@ -8,6 +8,7 @@ export type SafeUser = {
   id: string;
   name: string;
   email: string;
+  emailVerified: boolean;
   preferences: SafeUserPreferences;
 };
 

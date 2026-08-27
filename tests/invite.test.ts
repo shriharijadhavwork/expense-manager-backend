@@ -31,6 +31,7 @@ type GroupMember = {
   groupId: string;
   userId: string;
   role: "owner" | "member";
+  relation?: string | null;
   addedBy: string | null;
 };
 
@@ -51,6 +52,7 @@ type InviteResponse = {
     groupId: string;
     email: string;
     invitedBy: string;
+    relation: string;
     status: "pending" | "accepted" | "revoked" | "expired";
     expiresAt: string;
     inviteUrl: string | null;
@@ -127,16 +129,129 @@ describe("Group invite API (Batch 3)", () => {
     const response = await request(app)
       .post(`/api/v1/groups/${groupId}/invites`)
       .set("Authorization", `Bearer ${alice.token}`)
-      .send({ email: "bob-invite@example.com" })
+      .send({ email: "bob-invite@example.com", relation: "friend" })
       .expect(201);
 
     const body = response.body as InviteResponse;
     expect(body.data.email).toBe("bob-invite@example.com");
     expect(body.data.status).toBe("pending");
+    expect(body.data.relation).toBe("friend");
     expect(body.data.invitedBy).toBe(alice.user.id);
     expect(body.data.inviteUrl).toMatch(
-      /^http:\/\/localhost:3000\/app\/invites\/[a-f0-9]{64}$/,
+      /^http:\/\/localhost:3000\/invites\/[a-f0-9]{64}$/,
     );
+  });
+
+  it("allows anyone to preview a pending invite without auth", async () => {
+    const alice = await signup("Alice", "alice-preview@example.com");
+
+    const created = await request(app)
+      .post("/api/v1/groups")
+      .set("Authorization", `Bearer ${alice.token}`)
+      .send({ name: "Trip" })
+      .expect(201);
+
+    const groupId = (created.body as GroupResponse).data.id;
+
+    const invite = await request(app)
+      .post(`/api/v1/groups/${groupId}/invites`)
+      .set("Authorization", `Bearer ${alice.token}`)
+      .send({ email: "preview-user@example.com", relation: "friend" })
+      .expect(201);
+
+    const token = tokenFromInviteUrl(
+      (invite.body as InviteResponse).data.inviteUrl!,
+    );
+
+    const preview = await request(app)
+      .get(`/api/v1/invites/${token}`)
+      .expect(200);
+
+    expect(preview.body).toMatchObject({
+      success: true,
+      data: {
+        email: "preview-user@example.com",
+        groupName: "Trip",
+        status: "pending",
+        relation: "friend",
+        relationLabel: "Friend",
+        invitedByName: "Alice",
+        invitedByEmail: "alice-preview@example.com",
+      },
+    });
+  });
+
+  it("creates a direct invite group for an email without an account", async () => {
+    const alice = await signup("Alice", "alice-direct@example.com");
+
+    const response = await request(app)
+      .post("/api/v1/invites/direct")
+      .set("Authorization", `Bearer ${alice.token}`)
+      .send({ email: "newcomer@example.com", relation: "colleague" })
+      .expect(201);
+
+    const body = response.body as InviteResponse;
+    expect(body.data.email).toBe("newcomer@example.com");
+    expect(body.data.relation).toBe("colleague");
+    expect(body.data.status).toBe("pending");
+    expect(body.data.inviteUrl).toMatch(
+      /^http:\/\/localhost:3000\/invites\/[a-f0-9]{64}$/,
+    );
+
+    const group = await request(app)
+      .get(`/api/v1/groups/${body.data.groupId}`)
+      .set("Authorization", `Bearer ${alice.token}`)
+      .expect(200);
+
+    expect((group.body as GroupResponse).data.members).toHaveLength(1);
+  });
+
+  it("rejects direct invite when the email already has an account", async () => {
+    const alice = await signup("Alice", "alice-direct-exists@example.com");
+    const bob = await signup("Bob", "bob-direct-exists@example.com");
+
+    const response = await request(app)
+      .post("/api/v1/invites/direct")
+      .set("Authorization", `Bearer ${alice.token}`)
+      .send({ email: bob.user.email, relation: "friend" })
+      .expect(400);
+
+    expect(response.body).toMatchObject({
+      success: false,
+    });
+  });
+
+  it("copies relation onto membership when an invite is accepted", async () => {
+    const alice = await signup("Alice", "alice-relation@example.com");
+    const bob = await signup("Bob", "bob-relation@example.com");
+
+    const created = await request(app)
+      .post("/api/v1/groups")
+      .set("Authorization", `Bearer ${alice.token}`)
+      .send({ name: "Roommates" })
+      .expect(201);
+
+    const groupId = (created.body as GroupResponse).data.id;
+
+    const invite = await request(app)
+      .post(`/api/v1/groups/${groupId}/invites`)
+      .set("Authorization", `Bearer ${alice.token}`)
+      .send({ email: bob.user.email, relation: "roommate" })
+      .expect(201);
+
+    const token = tokenFromInviteUrl(
+      (invite.body as InviteResponse).data.inviteUrl!,
+    );
+
+    const accepted = await request(app)
+      .post(`/api/v1/invites/${token}/accept`)
+      .set("Authorization", `Bearer ${bob.token}`)
+      .expect(200);
+
+    const bobMember = (accepted.body as GroupResponse).data.members.find(
+      (m) => m.userId === bob.user.id,
+    );
+    expect(bobMember?.relation).toBe("roommate");
   });
 
   it("accepts an invite and adds the user as a member", async () => {
@@ -154,7 +269,7 @@ describe("Group invite API (Batch 3)", () => {
     const invite = await request(app)
       .post(`/api/v1/groups/${groupId}/invites`)
       .set("Authorization", `Bearer ${alice.token}`)
-      .send({ email: bob.user.email })
+      .send({ email: bob.user.email, relation: "friend" })
       .expect(201);
 
     const token = tokenFromInviteUrl(
@@ -190,7 +305,7 @@ describe("Group invite API (Batch 3)", () => {
     const invite = await request(app)
       .post(`/api/v1/groups/${groupId}/invites`)
       .set("Authorization", `Bearer ${alice.token}`)
-      .send({ email: bob.user.email })
+      .send({ email: bob.user.email, relation: "friend" })
       .expect(201);
 
     const token = tokenFromInviteUrl(
@@ -221,7 +336,7 @@ describe("Group invite API (Batch 3)", () => {
     await request(app)
       .post(`/api/v1/groups/${groupId}/invites`)
       .set("Authorization", `Bearer ${bob.token}`)
-      .send({ email: "outsider@example.com" })
+      .send({ email: "outsider@example.com", relation: "friend" })
       .expect(403);
   });
 
@@ -240,7 +355,7 @@ describe("Group invite API (Batch 3)", () => {
     const invite = await request(app)
       .post(`/api/v1/groups/${groupId}/invites`)
       .set("Authorization", `Bearer ${alice.token}`)
-      .send({ email: bob.user.email })
+      .send({ email: bob.user.email, relation: "friend" })
       .expect(201);
 
     const inviteId = (invite.body as InviteResponse).data.id;
@@ -277,7 +392,7 @@ describe("Group invite API (Batch 3)", () => {
     const invite = await request(app)
       .post(`/api/v1/groups/${groupId}/invites`)
       .set("Authorization", `Bearer ${alice.token}`)
-      .send({ email: bob.user.email })
+      .send({ email: bob.user.email, relation: "friend" })
       .expect(201);
 
     const inviteBody = (invite.body as InviteResponse).data;
@@ -310,13 +425,13 @@ describe("Group invite API (Batch 3)", () => {
     const first = await request(app)
       .post(`/api/v1/groups/${groupId}/invites`)
       .set("Authorization", `Bearer ${alice.token}`)
-      .send({ email: "repeat@example.com" })
+      .send({ email: "repeat@example.com", relation: "friend" })
       .expect(201);
 
     const second = await request(app)
       .post(`/api/v1/groups/${groupId}/invites`)
       .set("Authorization", `Bearer ${alice.token}`)
-      .send({ email: "repeat@example.com" })
+      .send({ email: "repeat@example.com", relation: "friend" })
       .expect(201);
 
     const firstData = (first.body as InviteResponse).data;
@@ -351,7 +466,7 @@ describe("Group invite API (Batch 3)", () => {
     await request(app)
       .post(`/api/v1/groups/${groupId}/invites`)
       .set("Authorization", `Bearer ${alice.token}`)
-      .send({ email: bob.user.email })
+      .send({ email: bob.user.email, relation: "friend" })
       .expect(409);
   });
 
@@ -378,7 +493,7 @@ describe("Group invite API (Batch 3)", () => {
     const invite = await request(app)
       .post(`/api/v1/groups/${groupId}/invites`)
       .set("Authorization", `Bearer ${alice.token}`)
-      .send({ email: bob.user.email })
+      .send({ email: bob.user.email, relation: "friend" })
       .expect(201);
 
     const token = tokenFromInviteUrl(

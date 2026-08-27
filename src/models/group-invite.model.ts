@@ -1,4 +1,8 @@
 import mongoose, { Schema, type HydratedDocument, type Model } from "mongoose";
+import {
+  USER_RELATIONS,
+  type UserRelation,
+} from "../constants/relation.js";
 
 export const GROUP_INVITE_STATUSES = [
   "pending",
@@ -12,6 +16,7 @@ export interface IGroupInvite {
   groupId: mongoose.Types.ObjectId;
   email: string;
   invitedBy: mongoose.Types.ObjectId;
+  relation: UserRelation;
   token: string;
   status: GroupInviteStatus;
   expiresAt: Date;
@@ -44,6 +49,11 @@ const groupInviteSchema = new Schema<IGroupInvite>(
       ref: "User",
       required: true,
       index: true,
+    },
+    relation: {
+      type: String,
+      enum: USER_RELATIONS,
+      required: true,
     },
     token: {
       type: String,
@@ -82,6 +92,7 @@ const groupInviteSchema = new Schema<IGroupInvite>(
           groupId: String(ret["groupId"]),
           email: ret["email"],
           invitedBy: String(ret["invitedBy"]),
+          relation: ret["relation"],
           status: ret["status"],
           expiresAt: ret["expiresAt"],
           acceptedAt: ret["acceptedAt"],

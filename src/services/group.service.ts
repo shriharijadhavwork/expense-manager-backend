@@ -1,6 +1,7 @@
 import { groupRepository } from "../repositories/group.repository.js";
 import { groupMemberRepository } from "../repositories/group-member.repository.js";
 import { userRepository } from "../repositories/user.repository.js";
+import type { UserRelation } from "../constants/relation.js";
 import type {
   AddGroupMemberInput,
   CreateGroupInput,
@@ -22,6 +23,7 @@ export type SafeGroupMember = {
   name: string;
   email: string;
   role: "owner" | "member";
+  relation: UserRelation | null;
   addedBy: string | null;
   joinedAt: string;
 };
@@ -122,6 +124,7 @@ async function toSafeGroup(
         name: user?.name ?? "Unknown",
         email: user?.email ?? "",
         role: member.role,
+        relation: member.relation ?? null,
         addedBy: member.addedBy ? String(member.addedBy) : null,
         joinedAt: member.joinedAt.toISOString(),
       };

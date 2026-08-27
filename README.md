@@ -69,11 +69,15 @@ Base path: `/api/v1`
 | Method | Path | Auth | Description |
 | --- | --- | --- | --- |
 | `GET` | `/health` | No | Process health (includes DB connectivity status) |
-| `POST` | `/auth/signup` | No | Create account and return access token |
-| `POST` | `/auth/login` | No | Authenticate and return access token |
-| `POST` | `/auth/logout` | No | Client-oriented logout contract |
-| `GET` | `/auth/me` | Bearer JWT | Current authenticated user (includes preferences) |
-| `PATCH` | `/auth/me` | Bearer JWT | Update profile preferences |
+| `POST` | `/auth/signup` | No | Create account, send email OTP, return access token |
+| `POST` | `/auth/login` | No | Login and return access token |
+| `POST` | `/auth/logout` | No | Client-side logout hint |
+| `GET` | `/auth/me` | Bearer JWT | Current user (includes `emailVerified` + preferences) |
+| `POST` | `/auth/verify-email` | Bearer JWT | Confirm signup with 6-digit OTP |
+| `POST` | `/auth/resend-otp` | Bearer JWT | Resend signup OTP (rate-limited) |
+| `POST` | `/auth/forgot-password` | No | Request password reset email (generic response) |
+| `POST` | `/auth/reset-password` | No | Set a new password with reset token |
+| `PATCH` | `/auth/me` | Bearer JWT | Update preferences |
 | `POST` | `/threads` | Bearer JWT | Create a **personal** thread (dayKey/sequence title) |
 | `GET` | `/threads` | Bearer JWT | List personal active threads |
 | `GET` | `/threads/recycle-bin` | Bearer JWT | Soft-deleted personal + accessible group threads (7 days) |
@@ -100,6 +104,7 @@ Base path: `/api/v1`
 | `POST` | `/groups/:id/threads` | Bearer JWT | Create group thread |
 | `GET` | `/groups/:id/threads` | Bearer JWT | List active group threads |
 | `POST` | `/invites/:token/accept` | Bearer JWT | Accept invite (email must match) |
+| `GET` | `/invites/:token` | No | Public invite preview (email, group name, status) |
 | `POST` | `/expenses` | Bearer JWT | Create an expense |
 | `GET` | `/expenses` | Bearer JWT | List the current user's expenses (no query filters) |
 | `POST` | `/expenses/search` | Bearer JWT | Search/filter expenses via request body |
@@ -157,6 +162,38 @@ Content-Type: application/json
 Omit `title` to use a server-generated personal title such as `26 Aug 2026 · Thread 1` (from the user’s timezone preference; `auto` uses UTC). Creates `type: "personal"` only. Soft-delete moves a thread to the recycle bin for 7 days (`GET /threads/recycle-bin`). Group chats use `/groups/.../threads` and `/groups/resolve`.
 
 Membership changes (add / remove / leave / transfer / invite accept) append a `role: "system"` message to the group’s latest active thread when one exists.
+
+Group invite, signup OTP, and password-reset mail all go through the shared `emailService` (`docs/email-and-auth-plan.md`):
+
+- `EMAIL_PROVIDER=console` — logs only (**development/test default**; **blocked in production**)
+- `EMAIL_PROVIDER=smtp` — Nodemailer + `SMTP_*` (see `.env.example`)
+- `EMAIL_PROVIDER=ses` — planned (Batch F1)
+
+Invite links open at `{FRONTEND_URL}/invites/:token` (public preview; accept requires matching signed-in email).
+
+**Realtime (planned):** group chat messages are still REST-only today. Socket.IO notify-after-persist is tracked in `docs/realtime-socketio-plan.md` (batches R0–R4; SSE later as R5).
+
+### Email configuration (SMTP)
+
+```env
+EMAIL_PROVIDER=smtp
+EMAIL_FROM="Flux Team <noreply@yourdomain.com>"
+SMTP_HOST=smtp.yourprovider.com
+SMTP_PORT=587
+SMTP_SECURE=false
+SMTP_USER=...
+SMTP_PASS=...
+```
+
+For a local catcher (e.g. Mailpit on `1025`), set `EMAIL_PROVIDER=smtp`, `SMTP_HOST=127.0.0.1`, `SMTP_PORT=1025`, and omit `SMTP_USER` / `SMTP_PASS`.
+
+**Production:** `EMAIL_PROVIDER=console` fails boot. Use a verified sending domain.
+
+**Delivery policy (fail-soft):** creating an invite / issuing OTP / requesting a password reset still succeeds if the SMTP send fails. The invite/token/OTP is persisted; errors are logged. Users can retry (resend OTP / forgot-password again) or use a copied invite link.
+
+**Rate limits (per IP, 15‑minute window):** signup 10, OTP verify/resend 20, password reset 10, invite create 30, general auth 100.
+
+**DNS / reputation (ops):** before go-live on a real domain, publish SPF and DKIM (and ideally DMARC) for the `EMAIL_FROM` domain so providers accept mail. With AWS SES later, use SES domain verification + DKIM; with SMTP, follow your provider’s DNS instructions.
 
 ### AI context payload (for future agents)
 

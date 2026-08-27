@@ -1,4 +1,8 @@
 import mongoose, { Schema, type HydratedDocument, type Model } from "mongoose";
+import {
+  USER_RELATIONS,
+  type UserRelation,
+} from "../constants/relation.js";
 
 export const GROUP_MEMBER_ROLES = ["owner", "member"] as const;
 export type GroupMemberRole = (typeof GROUP_MEMBER_ROLES)[number];
@@ -7,6 +11,7 @@ export interface IGroupMember {
   groupId: mongoose.Types.ObjectId;
   userId: mongoose.Types.ObjectId;
   role: GroupMemberRole;
+  relation: UserRelation | null;
   addedBy: mongoose.Types.ObjectId | null;
   joinedAt: Date;
   leftAt: Date | null;
@@ -37,6 +42,11 @@ const groupMemberSchema = new Schema<IGroupMember>(
       required: true,
       default: "member",
     },
+    relation: {
+      type: String,
+      enum: [...USER_RELATIONS, null],
+      default: null,
+    },
     addedBy: {
       type: Schema.Types.ObjectId,
       ref: "User",
@@ -61,6 +71,7 @@ const groupMemberSchema = new Schema<IGroupMember>(
           groupId: String(ret["groupId"]),
           userId: String(ret["userId"]),
           role: ret["role"],
+          relation: ret["relation"] ?? null,
           addedBy: ret["addedBy"] ? String(ret["addedBy"]) : null,
           joinedAt: ret["joinedAt"],
           leftAt: ret["leftAt"],

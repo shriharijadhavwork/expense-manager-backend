@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import type { UserRelation } from "../constants/relation.js";
 import {
   GroupMember,
   type GroupMemberDocument,
@@ -10,6 +11,7 @@ export type CreateGroupMemberRecord = {
   userId: string;
   role: GroupMemberRole;
   addedBy: string | null;
+  relation?: UserRelation | null;
   joinedAt?: Date;
 };
 
@@ -23,6 +25,7 @@ export const groupMemberRepository = {
       groupId: toObjectId(input.groupId),
       userId: toObjectId(input.userId),
       role: input.role,
+      relation: input.relation ?? null,
       addedBy: input.addedBy ? toObjectId(input.addedBy) : null,
       joinedAt: input.joinedAt ?? new Date(),
       leftAt: null,
@@ -41,6 +44,7 @@ export const groupMemberRepository = {
         groupId: toObjectId(input.groupId),
         userId: toObjectId(input.userId),
         role: input.role,
+        relation: input.relation ?? null,
         addedBy: input.addedBy ? toObjectId(input.addedBy) : null,
         joinedAt: input.joinedAt ?? new Date(),
         leftAt: null,
@@ -110,6 +114,7 @@ export const groupMemberRepository = {
     input: {
       role: GroupMemberRole;
       addedBy: string | null;
+      relation?: UserRelation | null;
       joinedAt?: Date;
     },
   ): Promise<GroupMemberDocument | null> {
@@ -118,6 +123,7 @@ export const groupMemberRepository = {
       {
         $set: {
           role: input.role,
+          relation: input.relation ?? null,
           addedBy: input.addedBy ? toObjectId(input.addedBy) : null,
           joinedAt: input.joinedAt ?? new Date(),
           leftAt: null,

@@ -3,14 +3,26 @@ import { userRepository } from "../repositories/user.repository.js";
 import {
   userPreferencesService,
 } from "./user-preferences.service.js";
+import { emailVerificationService } from "./email/email-verification.service.js";
+import { passwordResetService } from "./email/password-reset.service.js";
 import type { AuthResult, SafeUser, SafeUserPreferences } from "../types/auth.types.js";
-import type { LoginInput, SignupInput } from "../schemas/auth.schema.js";
+import type {
+  ForgotPasswordInput,
+  LoginInput,
+  ResetPasswordInput,
+  SignupInput,
+  VerifyEmailInput,
+} from "../schemas/auth.schema.js";
 import type { UpdateMeInput } from "../schemas/user-preferences.schema.js";
 import { ApiError } from "../utils/api-error.js";
 import { signAccessToken } from "../utils/jwt.js";
 import type { UserDocument } from "../models/user.model.js";
 
 const BCRYPT_ROUNDS = 12;
+
+function resolveEmailVerified(user: UserDocument): boolean {
+  return emailVerificationService.isEmailVerified(user);
+}
 
 async function toSafeUser(user: UserDocument): Promise<SafeUser> {
   const preferences = await userPreferencesService.getForUser(String(user._id));
@@ -19,6 +31,7 @@ async function toSafeUser(user: UserDocument): Promise<SafeUser> {
     id: String(user._id),
     name: String(user.name),
     email: String(user.email),
+    emailVerified: resolveEmailVerified(user),
     preferences,
   };
 }
@@ -37,13 +50,19 @@ export const authService = {
       name: input.name,
       email,
       passwordHash,
+      emailVerified: false,
     });
+
+    await emailVerificationService.issueAndSendForNewUser(user);
 
     const token = signAccessToken(String(user._id));
     const safeUser = await toSafeUser(user);
 
     return {
-      user: safeUser,
+      user: {
+        ...safeUser,
+        emailVerified: false,
+      },
       token,
     };
   },
@@ -82,6 +101,33 @@ export const authService = {
     }
 
     return toSafeUser(user);
+  },
+
+  async verifyEmail(
+    userId: string,
+    input: VerifyEmailInput,
+  ): Promise<SafeUser> {
+    const user = await emailVerificationService.verifyCode(userId, input.code);
+    return toSafeUser(user);
+  },
+
+  async resendEmailOtp(userId: string): Promise<{ message: string }> {
+    await emailVerificationService.issueAndSendForUser(userId);
+    return {
+      message: "If your email still needs verification, a new code was sent.",
+    };
+  },
+
+  async forgotPassword(
+    input: ForgotPasswordInput,
+  ): Promise<{ message: string }> {
+    return passwordResetService.requestReset(input.email);
+  },
+
+  async resetPassword(
+    input: ResetPasswordInput,
+  ): Promise<{ message: string }> {
+    return passwordResetService.resetPassword(input.token, input.newPassword);
   },
 
   async updateMe(

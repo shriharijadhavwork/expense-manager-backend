@@ -1,9 +1,16 @@
 import { randomBytes } from "node:crypto";
+import {
+  USER_RELATION_LABELS,
+  type UserRelation,
+} from "../constants/relation.js";
 import { groupInviteRepository } from "../repositories/group-invite.repository.js";
 import { groupMemberRepository } from "../repositories/group-member.repository.js";
 import { groupRepository } from "../repositories/group.repository.js";
 import { userRepository } from "../repositories/user.repository.js";
-import type { CreateGroupInviteInput } from "../schemas/group-invite.schema.js";
+import type {
+  CreateDirectInviteInput,
+  CreateGroupInviteInput,
+} from "../schemas/group-invite.schema.js";
 import type { GroupInviteDocument } from "../models/group-invite.model.js";
 import { ApiError } from "../utils/api-error.js";
 import {
@@ -20,6 +27,7 @@ export type SafeGroupInvite = {
   groupId: string;
   email: string;
   invitedBy: string;
+  relation: UserRelation;
   status: "pending" | "accepted" | "revoked" | "expired";
   expiresAt: string;
   inviteUrl: string | null;
@@ -44,6 +52,7 @@ function toSafeInvite(
     groupId: String(invite.groupId),
     email: invite.email,
     invitedBy: String(invite.invitedBy),
+    relation: invite.relation,
     status: invite.status,
     expiresAt: invite.expiresAt.toISOString(),
     inviteUrl: includeUrl ? buildGroupInviteUrl(invite.token) : null,
@@ -93,6 +102,23 @@ async function requireOwnerMembership(
   }
 }
 
+function directInviteGroupName(actorName: string, email: string): string {
+  const local = email.split("@")[0]?.trim() || "Guest";
+  const joined = `${actorName.trim() || "You"} & ${local}`;
+  return joined.slice(0, 120);
+}
+
+export type InvitePreview = {
+  email: string;
+  groupName: string;
+  status: "pending" | "accepted" | "revoked" | "expired";
+  expiresAt: string;
+  relation: UserRelation;
+  relationLabel: string;
+  invitedByName: string;
+  invitedByEmail: string;
+};
+
 export const groupInviteService = {
   async create(
     actorUserId: string,
@@ -102,6 +128,7 @@ export const groupInviteService = {
     await requireOwnerMembership(actorUserId, groupId);
 
     const email = input.email.toLowerCase();
+    const relation = input.relation;
     const actor = await userRepository.findById(actorUserId);
     if (!actor) {
       throw ApiError.unauthorized("User not found");
@@ -139,6 +166,7 @@ export const groupInviteService = {
           status: "pending",
           token,
           expiresAt,
+          relation,
           acceptedAt: null,
           acceptedBy: null,
         },
@@ -152,6 +180,7 @@ export const groupInviteService = {
         groupId,
         email,
         invitedBy: actorUserId,
+        relation,
         token,
         expiresAt,
       });
@@ -167,10 +196,42 @@ export const groupInviteService = {
       to: email,
       groupName: group.name,
       invitedByName: actor.name,
+      invitedByEmail: actor.email,
+      relation,
       inviteUrl,
     });
 
     return toSafeInvite(invite, { includeUrl: true });
+  },
+
+  async createDirect(
+    actorUserId: string,
+    input: CreateDirectInviteInput,
+  ): Promise<SafeGroupInvite> {
+    const actor = await userRepository.findById(actorUserId);
+    if (!actor) {
+      throw ApiError.unauthorized("User not found");
+    }
+
+    const email = input.email.toLowerCase();
+    if (actor.email.toLowerCase() === email) {
+      throw ApiError.badRequest("You cannot invite yourself");
+    }
+
+    const existingUser = await userRepository.findByEmail(email);
+    if (existingUser) {
+      throw ApiError.badRequest(
+        "An account already exists for that email. Use Start chat instead.",
+      );
+    }
+
+    const group = await groupService.create(actorUserId, {
+      name: directInviteGroupName(actor.name, email),
+      memberIds: [],
+      emails: [],
+    });
+
+    return groupInviteService.create(actorUserId, group.id, input);
   },
 
   async listForGroup(
@@ -219,6 +280,28 @@ export const groupInviteService = {
     }
 
     return toSafeInvite(updated, { includeUrl: false });
+  },
+
+  async getPreview(token: string): Promise<InvitePreview> {
+    const invite = await groupInviteRepository.findByToken(token);
+    if (!invite) {
+      throw ApiError.notFound("Invite not found");
+    }
+
+    const current = await markExpiredIfNeeded(invite);
+    const group = await groupRepository.findById(String(current.groupId));
+    const inviter = await userRepository.findById(String(current.invitedBy));
+
+    return {
+      email: current.email,
+      groupName: group?.name ?? "Group",
+      status: current.status,
+      expiresAt: current.expiresAt.toISOString(),
+      relation: current.relation,
+      relationLabel: USER_RELATION_LABELS[current.relation],
+      invitedByName: inviter?.name ?? "Someone",
+      invitedByEmail: inviter?.email ?? "",
+    };
   },
 
   async accept(actorUserId: string, token: string): Promise<SafeGroup> {
@@ -276,6 +359,7 @@ export const groupInviteService = {
       await groupMemberRepository.reactivate(String(existing._id), {
         role: "member",
         addedBy: String(current.invitedBy),
+        relation: current.relation,
       });
     } else {
       await groupMemberRepository.create({
@@ -283,6 +367,7 @@ export const groupInviteService = {
         userId: actorUserId,
         role: "member",
         addedBy: String(current.invitedBy),
+        relation: current.relation,
       });
     }
 

@@ -457,7 +457,7 @@ Do not combine batches unless you explicitly ask.
 | 0 | pending | |
 | 1 | **done** | Group + GroupMember models; create/list/get/rename; owner rename authz |
 | 2 | **done** | Add/remove member, leave, transfer ownership; soft leave; dissolve solo owner; system message stub |
-| 3 | **done** | GroupInvite model; create/list/revoke; accept by token; email stub logs link |
+| 3 | **done** | GroupInvite model; create/list/revoke; accept by token; **email send is still a console stub** (see `docs/email-and-auth-plan.md` for real delivery) |
 | 4 | **done** | Thread type/XOR parent; dayKey/sequence/title; personal create path; backfill; recycle message block |
 | 5 | **done** | Group threads create/list; resolve exact member set; group message auth; expense groupId from chat |
 | 6 | **done** | Frontend groups list, Chat with…, group thread open; Thread types; personal default unchanged |
@@ -465,5 +465,12 @@ Do not combine batches unless you explicitly ask.
 | 8 | **done** | Group thread soft-delete/restore/recycle; composer recycle note; purge job helper |
 | 9 | **done** | System messages; AI context README; expense group badge; groups API docs; deferred group readAt |
 
+---
+
+## Follow-on: real email + auth mail
+
+Groups invite **logic** is done; **SMTP/SES delivery**, signup OTP, and password-reset mail are tracked separately:
+
+→ **`docs/email-and-auth-plan.md`** (batches E0–E5, future SES + monthly summary)
 
 **Plan documentation is ready.** You can request **Batch 0** or **Batch 1** next.

@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import type { UserRelation } from "../constants/relation.js";
 import {
   GroupInvite,
   type GroupInviteDocument,
@@ -9,6 +10,7 @@ export type CreateGroupInviteRecord = {
   groupId: string;
   email: string;
   invitedBy: string;
+  relation: UserRelation;
   token: string;
   expiresAt: Date;
 };
@@ -23,6 +25,7 @@ export const groupInviteRepository = {
       groupId: toObjectId(input.groupId),
       email: input.email.toLowerCase(),
       invitedBy: toObjectId(input.invitedBy),
+      relation: input.relation,
       token: input.token,
       status: "pending",
       expiresAt: input.expiresAt,
@@ -66,6 +69,7 @@ export const groupInviteRepository = {
       acceptedBy?: string | null;
       expiresAt?: Date;
       token?: string;
+      relation?: UserRelation;
     },
   ): Promise<GroupInviteDocument | null> {
     const $set: Record<string, unknown> = {
@@ -85,6 +89,9 @@ export const groupInviteRepository = {
     }
     if (updates.token !== undefined) {
       $set["token"] = updates.token;
+    }
+    if (updates.relation !== undefined) {
+      $set["relation"] = updates.relation;
     }
 
     return GroupInvite.findByIdAndUpdate(

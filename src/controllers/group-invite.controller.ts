@@ -1,11 +1,12 @@
 import type { Request, Response } from "express";
 import { groupInviteService } from "../services/group-invite.service.js";
-import type { CreateGroupInviteInput } from "../schemas/group-invite.schema.js";
-import type { GroupIdParams } from "../schemas/group.schema.js";
 import type {
+  CreateDirectInviteInput,
+  CreateGroupInviteInput,
   GroupInviteIdParams,
   InviteTokenParams,
 } from "../schemas/group-invite.schema.js";
+import type { GroupIdParams } from "../schemas/group.schema.js";
 import { ApiError } from "../utils/api-error.js";
 import { asyncHandler } from "../utils/async-handler.js";
 
@@ -45,6 +46,19 @@ export const groupInviteController = {
     });
   }),
 
+  createDirect: asyncHandler(async (req: Request, res: Response) => {
+    const userId = requireUserId(req);
+    const invite = await groupInviteService.createDirect(
+      userId,
+      req.body as CreateDirectInviteInput,
+    );
+
+    res.status(201).json({
+      success: true,
+      data: invite,
+    });
+  }),
+
   list: asyncHandler(async (req: Request, res: Response) => {
     const userId = requireUserId(req);
     const { id } = groupParams(req);
@@ -75,6 +89,16 @@ export const groupInviteController = {
     res.status(200).json({
       success: true,
       data: group,
+    });
+  }),
+
+  preview: asyncHandler(async (req: Request, res: Response) => {
+    const { token } = tokenParams(req);
+    const preview = await groupInviteService.getPreview(token);
+
+    res.status(200).json({
+      success: true,
+      data: preview,
     });
   }),
 };

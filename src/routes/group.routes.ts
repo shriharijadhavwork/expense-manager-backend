@@ -2,6 +2,7 @@ import { Router } from "express";
 import { groupController } from "../controllers/group.controller.js";
 import { groupInviteController } from "../controllers/group-invite.controller.js";
 import { authenticate } from "../middlewares/auth.middleware.js";
+import { inviteCreateRateLimiter } from "../middlewares/rate-limit.middleware.js";
 import { validateRequest } from "../middlewares/validate.middleware.js";
 import {
   addGroupMemberSchema,
@@ -77,6 +78,7 @@ groupRouter.post(
 
 groupRouter.post(
   "/:id/invites",
+  inviteCreateRateLimiter,
   validateRequest(groupIdParamsSchema, "params"),
   validateRequest(createGroupInviteSchema),
   groupInviteController.create,

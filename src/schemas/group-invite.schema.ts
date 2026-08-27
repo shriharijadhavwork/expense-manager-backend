@@ -1,9 +1,20 @@
 import { z } from "zod";
+import { USER_RELATIONS } from "../constants/relation.js";
+
+export const userRelationSchema = z.enum(USER_RELATIONS);
 
 export const createGroupInviteSchema = z.object({
   email: z
     .email("Valid email is required")
     .transform((value) => value.toLowerCase()),
+  relation: userRelationSchema,
+});
+
+export const createDirectInviteSchema = z.object({
+  email: z
+    .email("Valid email is required")
+    .transform((value) => value.toLowerCase()),
+  relation: userRelationSchema,
 });
 
 export const inviteTokenParamsSchema = z.object({
@@ -16,5 +27,6 @@ export const groupInviteIdParamsSchema = z.object({
 });
 
 export type CreateGroupInviteInput = z.infer<typeof createGroupInviteSchema>;
+export type CreateDirectInviteInput = z.infer<typeof createDirectInviteSchema>;
 export type InviteTokenParams = z.infer<typeof inviteTokenParamsSchema>;
 export type GroupInviteIdParams = z.infer<typeof groupInviteIdParamsSchema>;
