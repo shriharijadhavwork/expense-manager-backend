@@ -30,7 +30,12 @@ type ThreadResponse = {
   success: true;
   data: {
     id: string;
-    userId: string;
+    type: "personal" | "group";
+    userId: string | null;
+    groupId: string | null;
+    createdBy: string;
+    dayKey: string;
+    sequence: number;
     title: string;
     deletedAt: string | null;
     lastActivityAt: string;
@@ -92,7 +97,7 @@ describe("Thread API", () => {
     await mongoServer.stop();
   });
 
-  it("creates a thread with default title for the authenticated user", async () => {
+  it("creates a personal thread with dayKey/sequence default title", async () => {
     const auth = await signup("Alice", "alice-thread@example.com");
 
     const response = await request(app)
@@ -103,10 +108,39 @@ describe("Thread API", () => {
 
     const body = response.body as ThreadResponse;
     expect(body.success).toBe(true);
+    expect(body.data.type).toBe("personal");
     expect(body.data.userId).toBe(auth.user.id);
-    expect(body.data.title).toBe("New conversation");
+    expect(body.data.groupId).toBeNull();
+    expect(body.data.createdBy).toBe(auth.user.id);
+    expect(body.data.dayKey).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(body.data.sequence).toBe(1);
+    expect(body.data.title).toMatch(/^\d{1,2} [A-Z][a-z]{2} \d{4} · Thread 1$/);
     expect(body.data.deletedAt).toBeNull();
     expect(body.data.lastActivityAt).toBeTruthy();
+  });
+
+  it("increments personal sequence for the same dayKey", async () => {
+    const auth = await signup("Alice", "alice-sequence@example.com");
+
+    const first = await request(app)
+      .post("/api/v1/threads")
+      .set("Authorization", `Bearer ${auth.token}`)
+      .send({})
+      .expect(201);
+
+    const second = await request(app)
+      .post("/api/v1/threads")
+      .set("Authorization", `Bearer ${auth.token}`)
+      .send({})
+      .expect(201);
+
+    const firstData = (first.body as ThreadResponse).data;
+    const secondData = (second.body as ThreadResponse).data;
+
+    expect(firstData.dayKey).toBe(secondData.dayKey);
+    expect(firstData.sequence).toBe(1);
+    expect(secondData.sequence).toBe(2);
+    expect(secondData.title).toContain("· Thread 2");
   });
 
   it("creates a thread with a custom title", async () => {

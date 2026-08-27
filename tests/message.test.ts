@@ -302,7 +302,7 @@ describe("Message API", () => {
 
     const body = response.body as ErrorResponse;
     expect(body.error.message).toBe(
-      "Cannot add messages to a deleted thread",
+      "In Recycle Bin — restore to continue",
     );
   });
 

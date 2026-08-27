@@ -21,6 +21,30 @@ export const userRepository = {
     return User.findById(id).exec();
   },
 
+  async findByIds(ids: string[]): Promise<UserDocument[]> {
+    if (ids.length === 0) {
+      return [];
+    }
+
+    return User.find({
+      _id: { $in: ids },
+    }).exec();
+  },
+
+  async findByEmails(emails: string[]): Promise<UserDocument[]> {
+    if (emails.length === 0) {
+      return [];
+    }
+
+    const normalized = [
+      ...new Set(emails.map((email) => email.toLowerCase().trim())),
+    ];
+
+    return User.find({
+      email: { $in: normalized },
+    }).exec();
+  },
+
   async create(input: CreateUserInput): Promise<UserDocument> {
     const user = await User.create(input);
     return user;

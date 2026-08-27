@@ -1,6 +1,6 @@
 # Expense Manager Backend
 
-Frontend-agnostic REST API for a multi-user expense management application. This repository currently provides authentication and authenticated expense CRUD/search. AI features are intentionally out of scope for this stage.
+Frontend-agnostic REST API for a multi-user expense management application. Supports authentication, personal and group chat threads, shared groups/membership, expenses (including chat-linked), and file attachments. Agentic AI responses are not implemented yet; an AI context payload shape is documented below for the next stage.
 
 ## Technology stack
 
@@ -72,18 +72,43 @@ Base path: `/api/v1`
 | `POST` | `/auth/signup` | No | Create account and return access token |
 | `POST` | `/auth/login` | No | Authenticate and return access token |
 | `POST` | `/auth/logout` | No | Client-oriented logout contract |
-| `GET` | `/auth/me` | Bearer JWT | Current authenticated user |
-| `POST` | `/threads` | Bearer JWT | Create a conversation thread |
-| `GET` | `/threads` | Bearer JWT | List threads (`?status=active\|archived`, default active) |
-| `GET` | `/threads/:id` | Bearer JWT | Get one thread |
-| `PATCH` | `/threads/:id` | Bearer JWT | Rename or change status |
-| `DELETE` | `/threads/:id` | Bearer JWT | Soft-delete (archive) a thread |
+| `GET` | `/auth/me` | Bearer JWT | Current authenticated user (includes preferences) |
+| `PATCH` | `/auth/me` | Bearer JWT | Update profile preferences |
+| `POST` | `/threads` | Bearer JWT | Create a **personal** thread (dayKey/sequence title) |
+| `GET` | `/threads` | Bearer JWT | List personal active threads |
+| `GET` | `/threads/recycle-bin` | Bearer JWT | Soft-deleted personal + accessible group threads (7 days) |
+| `GET` | `/threads/:id` | Bearer JWT | Get one accessible thread (personal or group member) |
+| `PATCH` | `/threads/:id` | Bearer JWT | Rename thread |
+| `DELETE` | `/threads/:id` | Bearer JWT | Soft-delete (recycle bin); group: creator or group owner |
+| `POST` | `/threads/:id/restore` | Bearer JWT | Restore from recycle bin |
+| `DELETE` | `/threads/:id/permanent` | Bearer JWT | Permanently delete from recycle bin |
+| `POST` | `/threads/:id/read` | Bearer JWT | Mark personal thread read |
+| `GET` | `/threads/:id/messages` | Bearer JWT | List messages (group: all members’ messages) |
+| `POST` | `/threads/:id/messages` | Bearer JWT | Create user message (blocked if thread is in recycle bin) |
+| `POST` | `/groups` | Bearer JWT | Create group (creator = owner) |
+| `POST` | `/groups/resolve` | Bearer JWT | Find-or-create by emails (or memberIds) + new thread |
+| `GET` | `/groups` | Bearer JWT | List groups for current user |
+| `GET` | `/groups/:id` | Bearer JWT | Group detail + members |
+| `PATCH` | `/groups/:id` | Bearer JWT | Rename group (owner) |
+| `POST` | `/groups/:id/members` | Bearer JWT | Add member by email (owner) |
+| `DELETE` | `/groups/:id/members/:userId` | Bearer JWT | Remove member (owner) |
+| `POST` | `/groups/:id/leave` | Bearer JWT | Leave group |
+| `POST` | `/groups/:id/transfer` | Bearer JWT | Transfer ownership |
+| `POST` | `/groups/:id/invites` | Bearer JWT | Create email invite (owner) |
+| `GET` | `/groups/:id/invites` | Bearer JWT | List invites (owner) |
+| `DELETE` | `/groups/:id/invites/:inviteId` | Bearer JWT | Revoke invite (owner) |
+| `POST` | `/groups/:id/threads` | Bearer JWT | Create group thread |
+| `GET` | `/groups/:id/threads` | Bearer JWT | List active group threads |
+| `POST` | `/invites/:token/accept` | Bearer JWT | Accept invite (email must match) |
 | `POST` | `/expenses` | Bearer JWT | Create an expense |
 | `GET` | `/expenses` | Bearer JWT | List the current user's expenses (no query filters) |
 | `POST` | `/expenses/search` | Bearer JWT | Search/filter expenses via request body |
 | `GET` | `/expenses/:id` | Bearer JWT | Get one expense |
 | `PATCH` | `/expenses/:id` | Bearer JWT | Update one expense |
 | `DELETE` | `/expenses/:id` | Bearer JWT | Delete one expense |
+| `POST` | `/files` | Bearer JWT | Upload a file (multipart) |
+| `GET` | `/files/:id` | Bearer JWT | Get file metadata |
+| `DELETE` | `/files/:id` | Bearer JWT | Delete file |
 
 ### Signup
 
@@ -129,7 +154,41 @@ Content-Type: application/json
 }
 ```
 
-Omit `title` to use the default `"New conversation"`. `DELETE /threads/:id` archives the thread (soft delete). List archived threads with `GET /threads?status=archived`.
+Omit `title` to use a server-generated personal title such as `26 Aug 2026 · Thread 1` (from the user’s timezone preference; `auto` uses UTC). Creates `type: "personal"` only. Soft-delete moves a thread to the recycle bin for 7 days (`GET /threads/recycle-bin`). Group chats use `/groups/.../threads` and `/groups/resolve`.
+
+Membership changes (add / remove / leave / transfer / invite accept) append a `role: "system"` message to the group’s latest active thread when one exists.
+
+### AI context payload (for future agents)
+
+Do **not** parse thread titles for structure. Build agent context from IDs and preferences:
+
+```json
+{
+  "threadType": "personal",
+  "threadId": "<objectId>",
+  "userId": "<objectId>",
+  "actingUserId": "<objectId>",
+  "defaultCurrency": "INR"
+}
+```
+
+Group example:
+
+```json
+{
+  "threadType": "group",
+  "threadId": "<objectId>",
+  "groupId": "<objectId>",
+  "groupName": "Alice & Bob",
+  "actingUserId": "<objectId>",
+  "defaultCurrency": "INR"
+}
+```
+
+Notes:
+- `userId` is set for personal threads only; `groupId` / `groupName` for group threads.
+- Expenses created from a group thread may include `groupId` on the expense record.
+- Per-user read receipts for group threads are not implemented yet (`readAt` remains personal-thread scoped).
 
 ### List thread messages
 

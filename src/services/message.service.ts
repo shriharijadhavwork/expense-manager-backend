@@ -5,6 +5,7 @@ import {
 } from "../repositories/message.repository.js";
 import { threadRepository } from "../repositories/thread.repository.js";
 import { fileService } from "./file.service.js";
+import { threadService } from "./thread.service.js";
 import type { MessageDocument } from "../models/message.model.js";
 import type {
   CreateMessageInput,
@@ -56,23 +57,23 @@ export const messageService = {
     threadId: string,
     query: ListMessagesQuery = {},
   ): Promise<MessageListResult> {
-    const thread = await threadRepository.findByIdForUserIncludingDeleted(
-      threadId,
+    const thread = await threadService.requireAccessibleThread(
       userId,
+      threadId,
+      { includeDeleted: true },
     );
-
-    if (!thread) {
-      throw ApiError.notFound("Thread not found");
-    }
 
     const limit = resolveLimit(query);
 
     if (query.before) {
-      const cursor = await messageRepository.findByIdForThread(
-        query.before,
-        threadId,
-        userId,
-      );
+      const cursor =
+        thread.type === "personal"
+          ? await messageRepository.findByIdForThread(
+              query.before,
+              threadId,
+              userId,
+            )
+          : await messageRepository.findByIdInThread(query.before, threadId);
 
       if (!cursor) {
         throw ApiError.badRequest("Invalid cursor");
@@ -84,11 +85,10 @@ export const messageService = {
       listOptions.before = query.before;
     }
 
-    const messages = await messageRepository.listByThread(
-      threadId,
-      userId,
-      listOptions,
-    );
+    const messages =
+      thread.type === "personal"
+        ? await messageRepository.listByThread(threadId, userId, listOptions)
+        : await messageRepository.listAllByThread(threadId, listOptions);
 
     const hasMore = messages.length > limit;
     const page = hasMore ? messages.slice(0, limit) : messages;
@@ -108,17 +108,14 @@ export const messageService = {
     threadId: string,
     input: CreateMessageInput,
   ): Promise<SafeMessage> {
-    const thread = await threadRepository.findByIdForUserIncludingDeleted(
-      threadId,
+    const thread = await threadService.requireAccessibleThread(
       userId,
+      threadId,
+      { includeDeleted: true },
     );
 
-    if (!thread) {
-      throw ApiError.notFound("Thread not found");
-    }
-
     if (thread.deletedAt) {
-      throw ApiError.badRequest("Cannot add messages to a deleted thread");
+      throw ApiError.badRequest("In Recycle Bin — restore to continue");
     }
 
     if (input.attachmentIds && input.attachmentIds.length > 0) {
@@ -139,9 +136,15 @@ export const messageService = {
 
     const message = await messageRepository.create(createInput);
 
-    await threadRepository.updateByIdForUser(threadId, userId, {
-      lastActivityAt: now,
-    });
+    if (thread.type === "personal") {
+      await threadRepository.updateByIdForUser(threadId, userId, {
+        lastActivityAt: now,
+      });
+    } else {
+      await threadRepository.updateById(threadId, {
+        lastActivityAt: now,
+      });
+    }
 
     return toSafeMessage(message);
   },

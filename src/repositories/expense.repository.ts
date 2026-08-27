@@ -3,6 +3,7 @@ import { Expense, type ExpenseDocument } from "../models/expense.model.js";
 
 export type CreateExpenseRecord = {
   userId: string;
+  groupId?: string;
   amount: number;
   currency: string;
   category: string;
@@ -49,6 +50,7 @@ export const expenseRepository = {
       category: input.category,
       note: input.note,
       date: input.date,
+      ...(input.groupId ? { groupId: toObjectId(input.groupId) } : {}),
       ...(input.sourceThreadId
         ? { sourceThreadId: toObjectId(input.sourceThreadId) }
         : {}),

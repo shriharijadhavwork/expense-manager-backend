@@ -8,6 +8,7 @@ import type {
 import type { ExpenseDocument } from "../models/expense.model.js";
 import { ApiError } from "../utils/api-error.js";
 import { presentMoney } from "../utils/format-currency.js";
+import { threadService } from "./thread.service.js";
 
 export {
   formatCurrencyAmount,
@@ -20,6 +21,7 @@ export {
 export type SafeExpense = {
   id: string;
   userId: string;
+  groupId?: string;
   amount: number;
   currency: string;
   formattedAmount: string;
@@ -50,6 +52,7 @@ function toSafeExpense(expense: ExpenseDocument): SafeExpense {
   return {
     id: String(expense._id),
     userId: String(expense.userId),
+    ...(expense.groupId ? { groupId: String(expense.groupId) } : {}),
     amount: money.amount,
     currency: money.currency,
     formattedAmount: money.formattedAmount,
@@ -91,6 +94,11 @@ export const expenseService = {
     messageId: string,
     input: CreateExpenseInput,
   ): Promise<SafeExpense> {
+    const thread = await threadService.requireAccessibleThread(
+      userId,
+      threadId,
+    );
+
     const message = await messageRepository.findByIdForThread(
       messageId,
       threadId,
@@ -110,6 +118,9 @@ export const expenseService = {
       date: startOfUtcDay(input.date),
       sourceThreadId: threadId,
       sourceMessageId: messageId,
+      ...(thread.type === "group" && thread.groupId
+        ? { groupId: String(thread.groupId) }
+        : {}),
     });
 
     await messageRepository.addExpenseId(

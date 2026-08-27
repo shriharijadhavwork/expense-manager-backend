@@ -45,6 +45,16 @@ export const messageRepository = {
     }).exec();
   },
 
+  async findByIdInThread(
+    messageId: string,
+    threadId: string,
+  ): Promise<MessageDocument | null> {
+    return Message.findOne({
+      _id: toObjectId(messageId),
+      threadId: toObjectId(threadId),
+    }).exec();
+  },
+
   async addExpenseId(
     messageId: string,
     threadId: string,
@@ -67,34 +77,63 @@ export const messageRepository = {
     userId: string,
     options: ListMessagesOptions,
   ): Promise<MessageDocument[]> {
-    const filter: Record<string, unknown> = {
-      threadId: toObjectId(threadId),
-      userId: toObjectId(userId),
-    };
+    return listMessages({
+      threadId,
+      authorUserId: userId,
+      options,
+    });
+  },
 
-    if (options.before) {
-      const cursor = await Message.findOne({
-        _id: toObjectId(options.before),
-        threadId: toObjectId(threadId),
-        userId: toObjectId(userId),
-      }).exec();
-
-      if (!cursor) {
-        return [];
-      }
-
-      filter["$or"] = [
-        { createdAt: { $lt: cursor.createdAt } },
-        {
-          createdAt: cursor.createdAt,
-          _id: { $lt: cursor._id },
-        },
-      ];
-    }
-
-    return Message.find(filter)
-      .sort({ createdAt: -1, _id: -1 })
-      .limit(options.limit + 1)
-      .exec();
+  async listAllByThread(
+    threadId: string,
+    options: ListMessagesOptions,
+  ): Promise<MessageDocument[]> {
+    return listMessages({
+      threadId,
+      options,
+    });
   },
 };
+
+async function listMessages(input: {
+  threadId: string;
+  authorUserId?: string;
+  options: ListMessagesOptions;
+}): Promise<MessageDocument[]> {
+  const filter: Record<string, unknown> = {
+    threadId: toObjectId(input.threadId),
+  };
+
+  if (input.authorUserId) {
+    filter["userId"] = toObjectId(input.authorUserId);
+  }
+
+  if (input.options.before) {
+    const cursorFilter: Record<string, unknown> = {
+      _id: toObjectId(input.options.before),
+      threadId: toObjectId(input.threadId),
+    };
+    if (input.authorUserId) {
+      cursorFilter["userId"] = toObjectId(input.authorUserId);
+    }
+
+    const cursor = await Message.findOne(cursorFilter).exec();
+
+    if (!cursor) {
+      return [];
+    }
+
+    filter["$or"] = [
+      { createdAt: { $lt: cursor.createdAt } },
+      {
+        createdAt: cursor.createdAt,
+        _id: { $lt: cursor._id },
+      },
+    ];
+  }
+
+  return Message.find(filter)
+    .sort({ createdAt: -1, _id: -1 })
+    .limit(input.options.limit + 1)
+    .exec();
+}

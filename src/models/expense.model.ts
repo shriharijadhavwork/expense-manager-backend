@@ -3,6 +3,7 @@ import { DEFAULT_CURRENCY } from "../constants/currency.js";
 
 export interface IExpense {
   userId: mongoose.Types.ObjectId;
+  groupId?: mongoose.Types.ObjectId;
   amount: number;
   currency: string;
   category: string;
@@ -23,6 +24,11 @@ const expenseSchema = new Schema<IExpense>(
       type: Schema.Types.ObjectId,
       ref: "User",
       required: true,
+      index: true,
+    },
+    groupId: {
+      type: Schema.Types.ObjectId,
+      ref: "Group",
       index: true,
     },
     amount: {
@@ -76,6 +82,7 @@ const expenseSchema = new Schema<IExpense>(
         return {
           id: String(ret["_id"]),
           userId: String(ret["userId"]),
+          ...(ret["groupId"] ? { groupId: String(ret["groupId"]) } : {}),
           amount: ret["amount"],
           currency: ret["currency"],
           category: ret["category"],
