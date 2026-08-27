@@ -1,5 +1,7 @@
 import { messageRepository } from "../repositories/message.repository.js";
 import { threadRepository } from "../repositories/thread.repository.js";
+import { publishMessageCreated } from "../realtime/publish-message-created.js";
+import { safeMessageFromDocument } from "./message.service.js";
 import {
   buildGroupSystemMessage,
   type GroupSystemEvent,
@@ -26,7 +28,7 @@ export async function postGroupSystemEvent(input: {
     const threadId = String(latest._id);
     const now = new Date();
 
-    await messageRepository.create({
+    const message = await messageRepository.create({
       threadId,
       userId: input.actorUserId,
       role: "system",
@@ -36,6 +38,8 @@ export async function postGroupSystemEvent(input: {
     await threadRepository.updateById(threadId, {
       lastActivityAt: now,
     });
+
+    await publishMessageCreated(safeMessageFromDocument(message));
   } catch (error) {
     console.warn("[group-system-message] Failed to post system event", error);
   }

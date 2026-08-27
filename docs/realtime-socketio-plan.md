@@ -51,7 +51,7 @@ Keep the gateway; add Socket.IO **Redis adapter** when running >1 API process. S
 - Room naming, handshake auth rule, FE client interface sketch
 - Mark this plan as the source of truth
 
-### R1 — Backend realtime gateway + Socket.IO adapter
+### R1 — Backend realtime gateway + Socket.IO adapter ✅ done
 
 - Add `socket.io` dependency
 - `src/realtime/types.ts` — `RealtimeEvent` union starting with `message.created`
@@ -63,7 +63,7 @@ Keep the gateway; add Socket.IO **Redis adapter** when running >1 API process. S
 
 **Done when:** authenticated client can connect, join an accessible thread room, and receive a test emit.
 
-### R2 — Publish after message persist
+### R2 — Publish after message persist ✅ done
 
 - After successful `messageService.create` (user + system messages that go through the same path), `realtime.publish({ type: "message.created", … })`
 - Ensure group system messages also publish if they create `Message` rows
@@ -71,7 +71,7 @@ Keep the gateway; add Socket.IO **Redis adapter** when running >1 API process. S
 
 **Done when:** two sockets in the same thread room both receive `message.created` after REST create (manual or integration test).
 
-### R3 — Frontend realtime client + chat workspace
+### R3 — Frontend realtime client + chat workspace ✅ done
 
 - Env: `NEXT_PUBLIC_WS_URL` (default same origin / API host)
 - `lib/realtime/client.ts` — connect with token, join/leave on thread change, reconnect
@@ -80,7 +80,7 @@ Keep the gateway; add Socket.IO **Redis adapter** when running >1 API process. S
 
 **Done when:** two browsers in the same group thread see each other’s messages without refresh.
 
-### R4 — Hardening + docs polish
+### R4 — Hardening + docs polish ✅ done
 
 - CORS / origins for Socket.IO aligned with `FRONTEND_URL`
 - Rate-limit or throttle join attempts (light)

@@ -7,6 +7,7 @@ import {
   notFoundHandler,
 } from "./middlewares/error.middleware.js";
 import { apiV1Router } from "./routes/index.js";
+import { resolveRealtimeCorsOrigins } from "./realtime/cors-origins.js";
 
 export function createApp() {
   const app = express();
@@ -15,7 +16,7 @@ export function createApp() {
   app.use(helmet());
   app.use(
     cors({
-      origin: env.FRONTEND_URL,
+      origin: resolveRealtimeCorsOrigins(env.FRONTEND_URL),
       credentials: true,
     }),
   );

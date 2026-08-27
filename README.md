@@ -30,7 +30,7 @@ Copy `.env.example` to `.env` and fill in values:
 | `MONGODB_URI` | MongoDB Atlas (or other) connection string; database name should be `expense-manager` in the path |
 | `JWT_SECRET` | Secret used to sign JWTs (min 16 characters) |
 | `JWT_EXPIRES_IN` | Access token lifetime (for example `7d`) |
-| `FRONTEND_URL` | Allowed CORS origin for the frontend |
+| `FRONTEND_URL` | Allowed CORS origin for the frontend (and Socket.IO); use exact app URL, e.g. `http://localhost:3000` |
 
 `.env` is gitignored and must never be committed.
 
@@ -171,7 +171,43 @@ Group invite, signup OTP, and password-reset mail all go through the shared `ema
 
 Invite links open at `{FRONTEND_URL}/invites/:token` (public preview; accept requires matching signed-in email).
 
-**Realtime (planned):** group chat messages are still REST-only today. Socket.IO notify-after-persist is tracked in `docs/realtime-socketio-plan.md` (batches R0–R4; SSE later as R5).
+**Realtime:** Socket.IO in-process; REST create publishes `message.created`. Frontend subscribes in chat. See **Realtime (Socket.IO)** below and `docs/realtime-socketio-plan.md`.
+
+### Realtime (Socket.IO)
+
+Chat uses **REST to send** messages and **Socket.IO to receive** live updates from other participants.
+
+| Item | Value |
+| --- | --- |
+| Transport | In-process on the same HTTP server as Express |
+| Path | `/socket.io` |
+| Auth | JWT on handshake (`auth.token` or `Authorization: Bearer`) |
+| Rooms | `thread:{threadId}` after successful `thread:join` |
+| CORS | `FRONTEND_URL` (+ `localhost` ↔ `127.0.0.1` alias in dev) |
+
+**Local dev**
+
+1. Backend: `npm run dev` on port `5050` (see `PORT`).
+2. Frontend: `npm run dev` on `http://localhost:3000`.
+3. Backend `.env`: `FRONTEND_URL=http://localhost:3000`
+4. Frontend `.env.local`: `NEXT_PUBLIC_API_URL=http://localhost:5050/api/v1` (optional `NEXT_PUBLIC_WS_URL=http://localhost:5050`)
+
+**Server → client events**
+
+| Event | Payload |
+| --- | --- |
+| `message.created` | `{ type: "message.created", threadId, message: SafeMessage }` |
+
+**Client → server (control only)**
+
+| Event | Body | Notes |
+| --- | --- | --- |
+| `thread:join` | `{ threadId }` | Membership check; light per-socket rate limit |
+| `thread:leave` | `{ threadId }` | Leave room |
+
+Sending messages over the socket is **not** supported in v1 — use `POST /threads/:id/messages`.
+
+**Future:** SSE adapter (batch R5) can subscribe to the same `RealtimeEvent` shapes without changing domain services.
 
 ### Email configuration (SMTP)
 

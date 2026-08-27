@@ -11,6 +11,7 @@ import type {
   CreateMessageInput,
   ListMessagesQuery,
 } from "../schemas/message.schema.js";
+import { publishMessageCreated } from "../realtime/publish-message-created.js";
 import { ApiError } from "../utils/api-error.js";
 
 export type SafeMessage = {
@@ -44,6 +45,11 @@ function toSafeMessage(message: MessageDocument): SafeMessage {
     expenseIds: message.expenseIds.map((id) => String(id)),
     createdAt: message.createdAt.toISOString(),
   };
+}
+
+/** Used by group system messages to publish after persist. */
+export function safeMessageFromDocument(message: MessageDocument): SafeMessage {
+  return toSafeMessage(message);
 }
 
 function resolveLimit(query: ListMessagesQuery): number {
@@ -146,6 +152,8 @@ export const messageService = {
       });
     }
 
-    return toSafeMessage(message);
+    const safe = toSafeMessage(message);
+    await publishMessageCreated(safe);
+    return safe;
   },
 };
