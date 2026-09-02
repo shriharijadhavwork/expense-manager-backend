@@ -17,6 +17,9 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@google/generative-ai": "^0.24.1",
+    "@langchain/core": "^1.2.9",
+    "@langchain/langgraph": "^1.4.13",
     "bcrypt": "^6.0.0",
     "cloudinary": "^2.10.1",
     "cors": "^2.8.6",

@@ -3,6 +3,8 @@
 > **Status:** 70% implementation plan — expected to evolve as the product is built.
 >
 > **Important:** Backend and Agentic AI will initially live in the **same repository and same Node.js service**. They are separated logically into modules so the AI layer can be extracted later if necessary.
+>
+> **Frontend (FLUX):** Public landing page and app routes are documented in [`docs/frontend-integration.md`](frontend-integration.md) and `../frontend/docs/landing-page.md`.
 
 ---
 

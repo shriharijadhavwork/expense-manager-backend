@@ -1,0 +1,98 @@
+# Frontend integration (FLUX)
+
+> **Status:** Current as of the FLUX landing page (v1).
+
+The web client lives in `frontend/` (Next.js 16, App Router). Product name in the UI: **FLUX** (configured via `appConfig` / email brand).
+
+## URLs and CORS
+
+| Surface | URL (local dev) | Auth |
+| --- | --- | --- |
+| Landing / marketing | `http://localhost:3000/` | Public |
+| Register / login | `/register`, `/login` | Guest |
+| App | `/app`, `/app/chat`, … | Bearer JWT required |
+| Invite preview | `/invites/:token` | Public preview; accept requires login |
+
+Backend must allow the frontend origin:
+
+```env
+FRONTEND_URL=http://localhost:3000
+```
+
+Frontend API base:
+
+```env
+NEXT_PUBLIC_API_URL=http://localhost:5050/api/v1
+```
+
+Optional WebSocket host (defaults to API host):
+
+```env
+NEXT_PUBLIC_WS_URL=http://localhost:5050
+```
+
+Invite emails link to `{FRONTEND_URL}/invites/:token`. Password reset links use `{FRONTEND_URL}/reset-password?token=…`.
+
+## What the landing page can honestly claim
+
+The trust section on `/` reflects **implemented** backend behavior. Maintain this alignment when changing either side.
+
+| Claim | Backend support |
+| --- | --- |
+| Data scoped to signed-in account | Yes — routes use `auth` middleware; expenses/threads filtered by membership/user |
+| Passwords hashed (bcrypt) | Yes — `auth` signup/login |
+| API requires authentication for private data | Yes — Bearer JWT on protected routes |
+| Email verification before app use | Yes — `emailVerified` on user; frontend `AuthGuard` / `GuestGuard` |
+| Rate limiting on auth endpoints | Yes — `express-rate-limit` (see README) |
+| Security headers | Yes — `helmet` |
+
+**Do not** add landing copy for: E2E encryption, bank-level security, SOC2, or “we never see your data” — user data is stored in MongoDB on the server.
+
+## What the landing page illustrates but does not implement yet
+
+These are **marketing demos only**. The backend does not provide these APIs today:
+
+- Natural-language expense extraction from chat messages
+- AI / assistant replies in threads
+- Income, transfers, or running balance aggregation APIs
+- Conversational finance Q&A
+- Automated comparative insights (e.g. “dining up 24% vs last month”)
+- Settlement / owe/owed balances (`/app/settlements` is a shell)
+
+See `frontend/docs/landing-page.md` for the full capability matrix and component map.
+
+## Implemented features the app uses
+
+| Feature | API / notes |
+| --- | --- |
+| Auth (signup, login, OTP, forgot/reset password) | `/auth/*` |
+| Personal + group threads, messages | `/threads/*`, `/groups/*` |
+| Realtime message delivery | Socket.IO `message.created` |
+| Expenses CRUD + search | `/expenses`, `/expenses/search` |
+| File attachments | `/files` (Cloudinary) |
+| User preferences (theme, timezone, currency) | `PATCH /auth/me` |
+
+Agentic AI responses are **not implemented**; message `role: "assistant"` exists in the schema for future use.
+
+## Local full-stack dev
+
+```bash
+# Terminal 1 — backend (port 5050)
+cd expense-manager-backend
+cp .env.example .env   # set MONGODB_URI, JWT_SECRET, FRONTEND_URL
+npm run dev
+
+# Terminal 2 — frontend (port 3000)
+cd frontend
+cp .env.example .env.local
+npm run dev
+```
+
+Open `http://localhost:3000/` for the landing page, `/register` to create an account, `/app` after sign-in.
+
+## Related docs
+
+- API reference: `../README.md`
+- Landing page implementation: `../../frontend/docs/landing-page.md`
+- Realtime: `realtime-socketio-plan.md`
+- Email/auth: `email-and-auth-plan.md`

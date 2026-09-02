@@ -34,6 +34,24 @@ export type SafeExpense = {
   updatedAt: string;
 };
 
+export type SpendingCategoryTotal = {
+  category: string;
+  currency: string;
+  amount: number;
+  formattedAmount: string;
+  count: number;
+};
+
+export type SpendingSummary = {
+  count: number;
+  totals: Array<{
+    currency: string;
+    amount: number;
+    formattedAmount: string;
+  }>;
+  byCategory: SpendingCategoryTotal[];
+};
+
 function startOfUtcDay(dateOnly: string): Date {
   return new Date(`${dateOnly}T00:00:00.000Z`);
 }
@@ -213,5 +231,56 @@ export const expenseService = {
     });
 
     return expenses.map(toSafeExpense);
+  },
+
+  async getSpendingSummary(
+    userId: string,
+    input: SearchExpensesInput,
+  ): Promise<SpendingSummary> {
+    const expenses = await this.search(userId, input);
+
+    const totalsByCurrency = new Map<string, number>();
+    const categories = new Map<string, SpendingCategoryTotal>();
+
+    for (const expense of expenses) {
+      totalsByCurrency.set(
+        expense.currency,
+        (totalsByCurrency.get(expense.currency) ?? 0) + expense.amount,
+      );
+
+      const key = `${expense.category}:${expense.currency}`;
+      const existing = categories.get(key);
+      if (existing) {
+        existing.amount += expense.amount;
+        existing.count += 1;
+        existing.formattedAmount = presentMoney(
+          existing.amount,
+          existing.currency,
+        ).formattedAmount;
+      } else {
+        categories.set(key, {
+          category: expense.category,
+          currency: expense.currency,
+          amount: expense.amount,
+          formattedAmount: expense.formattedAmount,
+          count: 1,
+        });
+      }
+    }
+
+    return {
+      count: expenses.length,
+      totals: [...totalsByCurrency.entries()].map(([currency, amount]) => {
+        const money = presentMoney(amount, currency);
+        return {
+          currency: money.currency,
+          amount: money.amount,
+          formattedAmount: money.formattedAmount,
+        };
+      }),
+      byCategory: [...categories.values()].sort((left, right) =>
+        right.amount - left.amount,
+      ),
+    };
   },
 };

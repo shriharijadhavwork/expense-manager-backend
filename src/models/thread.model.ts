@@ -18,6 +18,9 @@ export interface IThread {
   deletedAt: Date | null;
   lastActivityAt: Date;
   readAt: Date | null;
+  messageWindowEndsAt: Date;
+  userMessageCount: number;
+  assistantMessageCount: number;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -90,6 +93,23 @@ const threadSchema = new Schema<IThread>(
       type: Date,
       default: null,
     },
+    messageWindowEndsAt: {
+      type: Date,
+      required: true,
+      index: true,
+    },
+    userMessageCount: {
+      type: Number,
+      required: true,
+      default: 0,
+      min: 0,
+    },
+    assistantMessageCount: {
+      type: Number,
+      required: true,
+      default: 0,
+      min: 0,
+    },
   },
   {
     timestamps: true,
@@ -106,6 +126,9 @@ const threadSchema = new Schema<IThread>(
           title: ret["title"],
           lastActivityAt: ret["lastActivityAt"],
           readAt: ret["readAt"] ?? null,
+          messageWindowEndsAt: ret["messageWindowEndsAt"],
+          userMessageCount: ret["userMessageCount"],
+          assistantMessageCount: ret["assistantMessageCount"],
           deletedAt: ret["deletedAt"] ?? null,
           createdAt: ret["createdAt"],
           updatedAt: ret["updatedAt"],

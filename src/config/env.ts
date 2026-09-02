@@ -56,6 +56,11 @@ const envSchema = z
     SMTP_SECURE: booleanFromEnv.default(false),
     SMTP_USER: z.string().optional(),
     SMTP_PASS: z.string().optional(),
+    GEMINI_API_KEY: z.string().trim().optional(),
+    GEMINI_MODEL: z.string().trim().min(1).default("gemini-2.5-flash"),
+    AI_DEBOUNCE_MS: z.coerce.number().int().positive().default(1500),
+    AI_LOG_LLM_PAYLOADS: booleanFromEnv.default(false),
+    AI_PERSIST_EXECUTIONS: booleanFromEnv.default(true),
   })
   .superRefine((data, ctx) => {
     if (

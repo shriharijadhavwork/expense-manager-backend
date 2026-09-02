@@ -14,6 +14,10 @@ import {
   getDayKey,
   resolveEffectiveTimezone,
 } from "../utils/thread-title.js";
+import {
+  hasUserMessageCapacity,
+  isThreadMessageWindowOpen,
+} from "../utils/thread-message-window.js";
 
 export type SafeThreadLastMessage = {
   content: string;
@@ -35,6 +39,10 @@ export type SafeThread = {
   readAt: string | null;
   unread: boolean;
   deletedAt: string | null;
+  messageWindowEndsAt: string;
+  userMessageCount: number;
+  assistantMessageCount: number;
+  acceptsUserMessages: boolean;
   createdAt: string;
   updatedAt: string;
   lastMessage: SafeThreadLastMessage | null;
@@ -75,6 +83,29 @@ function toSafeThreadLastMessage(
   };
 }
 
+function threadAcceptanceFlags(thread: {
+  messageWindowEndsAt?: Date;
+  createdAt?: Date;
+  userMessageCount?: number;
+  assistantMessageCount?: number;
+}) {
+  const createdAt = thread.createdAt ?? new Date(0);
+  const messageWindowEndsAt =
+    thread.messageWindowEndsAt ??
+    new Date(createdAt.getTime() + 24 * 60 * 60 * 1000);
+  const userMessageCount = thread.userMessageCount ?? 0;
+  const assistantMessageCount = thread.assistantMessageCount ?? 0;
+  const state = { messageWindowEndsAt, userMessageCount };
+
+  return {
+    messageWindowEndsAt: messageWindowEndsAt.toISOString(),
+    userMessageCount,
+    assistantMessageCount,
+    acceptsUserMessages:
+      isThreadMessageWindowOpen(state) && hasUserMessageCapacity(state),
+  };
+}
+
 function mapListRecord(thread: {
   _id: mongoose.Types.ObjectId;
   type: "personal" | "group";
@@ -87,6 +118,9 @@ function mapListRecord(thread: {
   deletedAt?: Date | null;
   lastActivityAt: Date;
   readAt?: Date | null;
+  messageWindowEndsAt?: Date;
+  userMessageCount?: number;
+  assistantMessageCount?: number;
   createdAt: Date;
   updatedAt: Date;
   lastMessage?: {
@@ -109,6 +143,7 @@ function mapListRecord(thread: {
     readAt: toReadAtIso(thread.readAt),
     unread: computeUnread(thread.lastActivityAt, thread.readAt),
     deletedAt: thread.deletedAt ? thread.deletedAt.toISOString() : null,
+    ...threadAcceptanceFlags(thread),
     createdAt: thread.createdAt.toISOString(),
     updatedAt: thread.updatedAt.toISOString(),
     lastMessage: toSafeThreadLastMessage(thread.lastMessage),
@@ -133,6 +168,7 @@ function toSafeThread(
     readAt: toReadAtIso(thread.readAt),
     unread: computeUnread(thread.lastActivityAt, thread.readAt),
     deletedAt: thread.deletedAt ? thread.deletedAt.toISOString() : null,
+    ...threadAcceptanceFlags(thread),
     createdAt: thread.createdAt.toISOString(),
     updatedAt: thread.updatedAt.toISOString(),
     lastMessage,

@@ -1,6 +1,8 @@
 # Expense Manager Backend
 
-Frontend-agnostic REST API for a multi-user expense management application. Supports authentication, personal and group chat threads, shared groups/membership, expenses (including chat-linked), and file attachments. Agentic AI responses are not implemented yet; an AI context payload shape is documented below for the next stage.
+Frontend-agnostic REST API for **FLUX** — a multi-user expense management application (web client in `../frontend`). Supports authentication, personal and group chat threads, shared groups/membership, expenses (including chat-linked), file attachments, Socket.IO realtime, and a Gemini-backed AI foundation (provider abstraction; agent not wired yet).
+
+**Frontend integration** (landing page, CORS, trust claims, capability matrix): [`docs/frontend-integration.md`](docs/frontend-integration.md).
 
 ## Technology stack
 
@@ -31,6 +33,9 @@ Copy `.env.example` to `.env` and fill in values:
 | `JWT_SECRET` | Secret used to sign JWTs (min 16 characters) |
 | `JWT_EXPIRES_IN` | Access token lifetime (for example `7d`) |
 | `FRONTEND_URL` | Allowed CORS origin for the frontend (and Socket.IO); use exact app URL, e.g. `http://localhost:3000` |
+| `GEMINI_API_KEY` | Google AI Studio API key for Gemini (optional until AI chat is enabled) |
+| `GEMINI_MODEL` | Gemini model name (default `gemini-2.5-flash`) |
+| `AI_DEBOUNCE_MS` | Debounce window for batched user messages before an AI turn (default `1500`; used in Phase 4) |
 
 `.env` is gitignored and must never be committed.
 
@@ -69,6 +74,8 @@ Base path: `/api/v1`
 | Method | Path | Auth | Description |
 | --- | --- | --- | --- |
 | `GET` | `/health` | No | Process health (includes DB connectivity status) |
+| `GET` | `/ai/health` | Bearer JWT | AI provider status; add `?ping=true` to call Gemini (requires `GEMINI_API_KEY`) |
+| `POST` | `/ai/run` | Bearer JWT | Run the LangGraph intent/extraction workflow (no expense write yet) |
 | `POST` | `/auth/signup` | No | Create account, send email OTP, return access token |
 | `POST` | `/auth/login` | No | Login and return access token |
 | `POST` | `/auth/logout` | No | Client-side logout hint |
@@ -192,6 +199,8 @@ Chat uses **REST to send** messages and **Socket.IO to receive** live updates fr
 3. Backend `.env`: `FRONTEND_URL=http://localhost:3000`
 4. Frontend `.env.local`: `NEXT_PUBLIC_API_URL=http://localhost:5050/api/v1` (optional `NEXT_PUBLIC_WS_URL=http://localhost:5050`)
 
+**Landing page:** `http://localhost:3000/` serves the public FLUX marketing site (no auth). Product UI is at `/app` after login. See `docs/frontend-integration.md` and `../frontend/docs/landing-page.md`.
+
 **Server → client events**
 
 | Event | Payload |
@@ -230,6 +239,68 @@ For a local catcher (e.g. Mailpit on `1025`), set `EMAIL_PROVIDER=smtp`, `SMTP_H
 **Rate limits (per IP, 15‑minute window):** signup 10, OTP verify/resend 20, password reset 10, invite create 30, general auth 100.
 
 **DNS / reputation (ops):** before go-live on a real domain, publish SPF and DKIM (and ideally DMARC) for the `EMAIL_FROM` domain so providers accept mail. With AWS SES later, use SES domain verification + DKIM; with SMTP, follow your provider’s DNS instructions.
+
+### AI foundation (Batch 1)
+
+Gemini provider abstraction lives under `src/ai/`. Chat messages still persist user text only — no LangGraph agent or automatic assistant replies yet.
+
+**Configure:**
+
+```bash
+GEMINI_API_KEY=your-key-from-aistudio.google.com
+GEMINI_MODEL=gemini-2.5-flash   # optional
+AI_DEBOUNCE_MS=1500             # optional; used when debounce lands (Phase 4)
+```
+
+**Health check (authenticated):**
+
+```http
+GET /api/v1/ai/health
+Authorization: Bearer <token>
+```
+
+Response when `GEMINI_API_KEY` is unset:
+
+```json
+{
+  "success": true,
+  "data": {
+    "configured": false,
+    "provider": null,
+    "model": "gemini-2.5-flash",
+    "debounceMs": 1500
+  }
+}
+```
+
+Add `?ping=true` to verify the Gemini API key (calls the model with a minimal JSON health prompt).
+
+Structured output schemas (`agentOutputSchema`, `expenseDraftSchema`) are in `src/ai/schemas/` for Phase 2+.
+
+**Graph dry-run (Batch 2, authenticated):**
+
+```http
+POST /api/v1/ai/run
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{
+  "threadId": "<threadId>",
+  "messageBatch": [
+    { "id": "<messageId>", "content": "Spent 450 on lunch today" }
+  ]
+}
+```
+
+Returns intent, extracted `expenseDraft`, `missingFields`, and a deterministic `assistantReply`. When the draft is complete, `createExpenseTool` calls `expenseService.createFromChat` and returns `createdExpense`.
+
+**Automatic chat flow (Batch 4):** posting a user message schedules a debounced AI turn (`AI_DEBOUNCE_MS`, default `1500`). After the quiet period, FLUX runs the graph, persists one `assistant` message, and publishes it over Socket.IO realtime. No manual `/ai/run` call needed in normal chat.
+
+**Persistent AI state (Batch 5):** each thread has a `conversation_ai_states` document (1:1 with thread) tracking `expenseDraft`, `currentIntent`, `missingRequiredFields`, `lastProcessedMessageId`, and optimistic `version`. Incomplete drafts survive across turns; completed expenses clear the draft.
+
+**Financial capabilities (Batch 6):** FLUX can query and update expenses via tools wired into the graph:
+- `searchExpensesTool` / `spendingSummaryTool` → `expenseService.search` / `getSpendingSummary` (`query_expenses` intent)
+- `updateExpenseTool` → `expenseService.update` (`update_expense` intent)
 
 ### AI context payload (for future agents)
 
@@ -289,7 +360,7 @@ Response:
 
 ### Create thread message
 
-Persists a user message only (no AI/agent response yet):
+Persists a user message only (no AI/agent response yet — Batch 4 will wire the orchestrator):
 
 ```http
 POST /api/v1/threads/:id/messages

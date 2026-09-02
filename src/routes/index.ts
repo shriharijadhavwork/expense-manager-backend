@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { isDatabaseConnected } from "../config/database.js";
+import { aiRouter } from "./ai.routes.js";
 import { authRouter } from "./auth.routes.js";
 import { expenseRouter } from "./expense.routes.js";
 import { fileRouter } from "./file.routes.js";
@@ -22,6 +23,7 @@ router.get("/health", (_req, res) => {
 });
 
 router.use("/auth", authRouter);
+router.use("/ai", aiRouter);
 router.use("/expenses", expenseRouter);
 router.use("/files", fileRouter);
 router.use("/groups", groupRouter);

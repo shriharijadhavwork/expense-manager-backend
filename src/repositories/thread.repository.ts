@@ -1,5 +1,8 @@
 import mongoose from "mongoose";
-import { getRecycleBinCutoffDate } from "../config/thread.constants.js";
+import {
+  computeMessageWindowEndsAt,
+  getRecycleBinCutoffDate,
+} from "../config/thread.constants.js";
 import {
   Thread,
   type ThreadDocument,
@@ -23,6 +26,13 @@ export type UpdateThreadRecord = {
   lastActivityAt?: Date;
   readAt?: Date | null;
   deletedAt?: Date | null;
+  userMessageCount?: number;
+  assistantMessageCount?: number;
+};
+
+export type ThreadMessageCountDelta = {
+  userMessageCount?: number;
+  assistantMessageCount?: number;
 };
 
 export type ThreadLastMessageRecord = {
@@ -44,6 +54,9 @@ export type ThreadListRecord = {
   deletedAt: Date | null;
   lastActivityAt: Date;
   readAt?: Date | null;
+  messageWindowEndsAt: Date;
+  userMessageCount: number;
+  assistantMessageCount: number;
   createdAt: Date;
   updatedAt: Date;
   lastMessage?: ThreadLastMessageRecord | null;
@@ -153,6 +166,9 @@ export const threadRepository = {
       status: "active",
       deletedAt: null,
       lastActivityAt: now,
+      messageWindowEndsAt: computeMessageWindowEndsAt(now),
+      userMessageCount: 0,
+      assistantMessageCount: 0,
     });
   },
 
@@ -336,6 +352,31 @@ export const threadRepository = {
         userId: toObjectId(userId),
       },
       { $set: updates },
+      { returnDocument: "after", runValidators: true },
+    ).exec();
+  },
+
+  async incrementMessageCounts(
+    threadId: string,
+    delta: ThreadMessageCountDelta,
+  ): Promise<ThreadDocument | null> {
+    const inc: Record<string, number> = {};
+
+    if (delta.userMessageCount) {
+      inc["userMessageCount"] = delta.userMessageCount;
+    }
+
+    if (delta.assistantMessageCount) {
+      inc["assistantMessageCount"] = delta.assistantMessageCount;
+    }
+
+    if (Object.keys(inc).length === 0) {
+      return Thread.findById(threadId).exec();
+    }
+
+    return Thread.findByIdAndUpdate(
+      threadId,
+      { $inc: inc },
       { returnDocument: "after", runValidators: true },
     ).exec();
   },

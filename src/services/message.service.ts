@@ -12,7 +12,9 @@ import type {
   ListMessagesQuery,
 } from "../schemas/message.schema.js";
 import { publishMessageCreated } from "../realtime/publish-message-created.js";
+import { aiDebounceService } from "../ai/services/debounce.service.js";
 import { ApiError } from "../utils/api-error.js";
+import { assertThreadAcceptsUserMessage } from "../utils/thread-message-window.js";
 
 export type SafeMessage = {
   id: string;
@@ -124,6 +126,8 @@ export const messageService = {
       throw ApiError.badRequest("In Recycle Bin — restore to continue");
     }
 
+    assertThreadAcceptsUserMessage(thread);
+
     if (input.attachmentIds && input.attachmentIds.length > 0) {
       await fileService.assertOwnedFileIds(userId, input.attachmentIds);
     }
@@ -142,6 +146,10 @@ export const messageService = {
 
     const message = await messageRepository.create(createInput);
 
+    await threadRepository.incrementMessageCounts(threadId, {
+      userMessageCount: 1,
+    });
+
     if (thread.type === "personal") {
       await threadRepository.updateByIdForUser(threadId, userId, {
         lastActivityAt: now,
@@ -153,6 +161,76 @@ export const messageService = {
     }
 
     const safe = toSafeMessage(message);
+    await publishMessageCreated(safe);
+
+    aiDebounceService.scheduleUserMessage({
+      threadId,
+      userId,
+      messageId: safe.id,
+      content: safe.content,
+    });
+
+    return safe;
+  },
+
+  async createAssistant(
+    userId: string,
+    threadId: string,
+    content: string,
+    expenseIds?: string[],
+  ): Promise<SafeMessage> {
+    const thread = await threadService.requireAccessibleThread(
+      userId,
+      threadId,
+      { includeDeleted: true },
+    );
+
+    if (thread.deletedAt) {
+      throw ApiError.badRequest("In Recycle Bin — restore to continue");
+    }
+
+    const now = new Date();
+    const message = await messageRepository.create({
+      threadId,
+      userId,
+      role: "assistant",
+      content,
+    });
+
+    if (expenseIds && expenseIds.length > 0) {
+      for (const expenseId of expenseIds) {
+        await messageRepository.addExpenseId(
+          String(message._id),
+          threadId,
+          userId,
+          expenseId,
+        );
+      }
+    }
+
+    await threadRepository.incrementMessageCounts(threadId, {
+      assistantMessageCount: 1,
+    });
+
+    if (thread.type === "personal") {
+      await threadRepository.updateByIdForUser(threadId, userId, {
+        lastActivityAt: now,
+      });
+    } else {
+      await threadRepository.updateById(threadId, {
+        lastActivityAt: now,
+      });
+    }
+
+    const refreshed =
+      expenseIds && expenseIds.length > 0
+        ? await messageRepository.findByIdInThread(
+            String(message._id),
+            threadId,
+          )
+        : message;
+
+    const safe = toSafeMessage(refreshed ?? message);
     await publishMessageCreated(safe);
     return safe;
   },

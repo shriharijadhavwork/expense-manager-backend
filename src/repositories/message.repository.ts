@@ -93,6 +93,36 @@ export const messageRepository = {
       options,
     });
   },
+
+  async listUserMessagesAfter(
+    threadId: string,
+    afterMessageId: string,
+    limit = 100,
+  ): Promise<MessageDocument[]> {
+    const cursor = await Message.findOne({
+      _id: toObjectId(afterMessageId),
+      threadId: toObjectId(threadId),
+    }).exec();
+
+    if (!cursor) {
+      return [];
+    }
+
+    return Message.find({
+      threadId: toObjectId(threadId),
+      role: "user",
+      $or: [
+        { createdAt: { $gt: cursor.createdAt } },
+        {
+          createdAt: cursor.createdAt,
+          _id: { $gt: cursor._id },
+        },
+      ],
+    })
+      .sort({ createdAt: 1, _id: 1 })
+      .limit(limit)
+      .exec();
+  },
 };
 
 async function listMessages(input: {

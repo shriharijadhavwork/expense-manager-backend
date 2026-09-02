@@ -377,4 +377,85 @@ describe("Message API", () => {
       .send({ content: "   " })
       .expect(400);
   });
+
+  it("sets message window fields on thread creation and increments user count", async () => {
+    const auth = await signup("Alice", "alice-window-fields@example.com");
+    const thread = await createThread(auth.token);
+
+    const threadResponse = await request(app)
+      .get(`/api/v1/threads/${thread.id}`)
+      .set("Authorization", `Bearer ${auth.token}`)
+      .expect(200);
+
+    const body = threadResponse.body as ThreadResponse & {
+      data: {
+        messageWindowEndsAt: string;
+        userMessageCount: number;
+        assistantMessageCount: number;
+        acceptsUserMessages: boolean;
+      };
+    };
+
+    expect(body.data.userMessageCount).toBe(0);
+    expect(body.data.assistantMessageCount).toBe(0);
+    expect(body.data.acceptsUserMessages).toBe(true);
+    expect(new Date(body.data.messageWindowEndsAt).getTime()).toBeGreaterThan(
+      new Date(body.data.createdAt).getTime(),
+    );
+
+    await createMessage(auth.token, thread.id, "First");
+
+    const afterMessage = await request(app)
+      .get(`/api/v1/threads/${thread.id}`)
+      .set("Authorization", `Bearer ${auth.token}`)
+      .expect(200);
+
+    expect(
+      (afterMessage.body as ThreadResponse & { data: { userMessageCount: number } })
+        .data.userMessageCount,
+    ).toBe(1);
+  });
+
+  it("rejects messages after the 24-hour window", async () => {
+    const auth = await signup("Alice", "alice-window-expired@example.com");
+    const thread = await createThread(auth.token);
+    const { Thread } = await import("../src/models/thread.model.js");
+
+    await Thread.updateOne(
+      { _id: thread.id },
+      { $set: { messageWindowEndsAt: new Date(Date.now() - 60_000) } },
+    ).exec();
+
+    const response = await request(app)
+      .post(`/api/v1/threads/${thread.id}/messages`)
+      .set("Authorization", `Bearer ${auth.token}`)
+      .send({ content: "Too late" })
+      .expect(400);
+
+    const body = response.body as ErrorResponse;
+    expect(body.error.message).toMatch(/conversation has closed/i);
+  });
+
+  it("rejects messages when user message limit is reached", async () => {
+    const auth = await signup("Alice", "alice-message-limit@example.com");
+    const thread = await createThread(auth.token);
+    const { Thread } = await import("../src/models/thread.model.js");
+    const { THREAD_MAX_USER_MESSAGES } = await import(
+      "../src/config/thread.constants.js"
+    );
+
+    await Thread.updateOne(
+      { _id: thread.id },
+      { $set: { userMessageCount: THREAD_MAX_USER_MESSAGES } },
+    ).exec();
+
+    const response = await request(app)
+      .post(`/api/v1/threads/${thread.id}/messages`)
+      .set("Authorization", `Bearer ${auth.token}`)
+      .send({ content: "Over limit" })
+      .expect(400);
+
+    const body = response.body as ErrorResponse;
+    expect(body.error.message).toMatch(/100-message limit/i);
+  });
 });
