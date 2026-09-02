@@ -70,6 +70,8 @@ function buildDedupeKey(item: ExtractedExpenseItem): string {
   return [
     item.draft.amount ?? "",
     item.draft.category?.toLowerCase() ?? "",
+    item.draft.subCategory?.trim().toLowerCase() ?? "",
+    item.draft.direction ?? "debit",
     item.draft.note?.trim().toLowerCase() ?? "",
     item.draft.date ?? "",
   ].join("|");

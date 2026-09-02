@@ -7,7 +7,7 @@ export function formatExpenseList(expenses: SafeExpense[]): string {
 
   const lines = expenses.slice(0, 5).map((expense) => {
     const note = expense.note ? ` — ${expense.note}` : "";
-    return `• ${expense.formattedAmount} ${expense.currency} on ${expense.date} (${expense.category})${note}`;
+    return `• ${expense.formattedAmount} ${expense.currency} on ${expense.date} (${expense.categoryLabel})${note}`;
   });
 
   const suffix =

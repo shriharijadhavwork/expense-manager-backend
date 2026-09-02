@@ -1,4 +1,6 @@
 import mongoose from "mongoose";
+import type { ExpenseCategory } from "../constants/expense-categories.js";
+import type { ExpenseDirection } from "../constants/expense-direction.js";
 import { Expense, type ExpenseDocument } from "../models/expense.model.js";
 
 export type CreateExpenseRecord = {
@@ -6,7 +8,9 @@ export type CreateExpenseRecord = {
   groupId?: string;
   amount: number;
   currency: string;
-  category: string;
+  direction: ExpenseDirection;
+  category: ExpenseCategory;
+  subCategory: string;
   note: string;
   date: Date;
   sourceThreadId?: string;
@@ -16,21 +20,27 @@ export type CreateExpenseRecord = {
 export type UpdateExpenseRecord = {
   amount?: number;
   currency?: string;
-  category?: string;
+  direction?: ExpenseDirection;
+  category?: ExpenseCategory;
+  subCategory?: string;
   note?: string;
   date?: Date;
 };
 
 export type ExpenseSearchFilter = {
   userId: string;
-  category?: string;
+  category?: ExpenseCategory;
+  subCategory?: string;
+  direction?: ExpenseDirection;
   from?: Date;
   to?: Date;
 };
 
 type ExpenseQuery = {
   userId: mongoose.Types.ObjectId;
-  category?: string;
+  category?: ExpenseCategory;
+  subCategory?: string;
+  direction?: ExpenseDirection;
   date?: {
     $gte?: Date;
     $lte?: Date;
@@ -47,7 +57,9 @@ export const expenseRepository = {
       userId: toObjectId(input.userId),
       amount: input.amount,
       currency: input.currency,
+      direction: input.direction,
       category: input.category,
+      subCategory: input.subCategory,
       note: input.note,
       date: input.date,
       ...(input.groupId ? { groupId: toObjectId(input.groupId) } : {}),
@@ -108,6 +120,14 @@ export const expenseRepository = {
 
     if (filter.category) {
       query.category = filter.category;
+    }
+
+    if (filter.subCategory) {
+      query.subCategory = filter.subCategory;
+    }
+
+    if (filter.direction) {
+      query.direction = filter.direction;
     }
 
     if (filter.from || filter.to) {

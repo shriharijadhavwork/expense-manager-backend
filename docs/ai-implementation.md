@@ -18,6 +18,8 @@ This document is the **living source of truth** for what is implemented in `src/
 | **5** | `conversation_ai_states` persistence; draft survives across turns | `conversation-ai-state.service.ts` |
 | **6** | Query/update intents; `searchExpensesTool`, `spendingSummaryTool`, `updateExpenseTool` | `nodes/query-expenses.node.ts`, `nodes/update-expense.node.ts` |
 | **7** | Multi-expense extraction/create, grounded replies, precise watermark, observability | `schemas/expense-extractions.schema.ts`, `utils/compute-last-processed-message-id.ts`, `services/ai-execution.service.ts` |
+| **A / A.1** | Fixed category taxonomy; free-text `subCategory`; `categoryLabel` on API | `constants/expense-categories.ts`, `services/expense.service.ts` |
+| **B** | Extraction + replies use slug storage, display titles in chat | `prompts/extract-expense.prompt.ts`, `utils/format-created-expenses-reply.ts` |
 
 Tests: `tests/multi-expense-integration.test.ts`, `tests/ai-graph.test.ts`, `tests/ai-orchestrator.test.ts`, `tests/compute-last-processed-message-id.test.ts`.
 
@@ -87,7 +89,9 @@ One user turn can produce **multiple expenses** from one or more messages in the
     {
       "sourceMessageId": "<messageId from batch>",
       "amount": 50,
-      "category": "food",
+      "category": "food_and_dining",
+      "subCategory": "Snacks",
+      "direction": "debit",
       "note": "snack",
       "dateHint": "today"
     }
@@ -95,6 +99,10 @@ One user turn can produce **multiple expenses** from one or more messages in the
   "skippedMessageIds": ["<non-expense message ids>"]
 }
 ```
+
+- `category` — canonical slug (aliases like `food` → `food_and_dining` are normalized on save)
+- `subCategory` — optional free-text label (e.g. `"WiFi Recharge"`); not validated against suggestions
+- `direction` — `"debit"` (spent, default) or `"credit"` (received)
 
 Legacy single-expense and flat-array shapes are normalized for backward compatibility.
 
@@ -104,7 +112,7 @@ Legacy single-expense and flat-array shapes are normalized for backward compatib
 - Resolves `sourceMessageId` from LLM hint or message content heuristics
 - Applies defaults: currency from user prefs, date from `dateHint` / message timestamp (UTC)
 - Computes `missingFields` per item (`amount`, `category`)
-- **Dedupes** identical expenses (same amount, category, note, date)
+- **Dedupes** identical expenses (amount, category, subCategory, direction, note, date)
 - Outputs `ExtractedExpenseItem[]` with `{ draft, sourceMessageId, missingFields }`
 
 ### Create loop (`createExpenseNode`)
@@ -146,12 +154,12 @@ For non-`create_expense` intents, watermark advances to the last message in the 
 | Needs clarification | LLM | Asks for one missing field |
 | Query / update / chat | LLM | Grounded on tool results |
 
-Deterministic multi-create example:
+Deterministic multi-create example (uses `categoryLabel`, never slugs):
 
 ```text
-Got it — I've saved:
-- **₹50.00** for snack (snack)
-- **₹100.00** for grocery (grocery)
+All set — here's what I logged:
+- **₹50.00** for Food & Dining · Snacks (snack)
+- **₹100.00** for Food & Dining · Groceries (grocery)
 ```
 
 Orchestrator **does not** persist an assistant message if `assistantReply` is empty.

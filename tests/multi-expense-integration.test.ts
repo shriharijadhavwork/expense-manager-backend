@@ -176,8 +176,8 @@ describe("multi-expense integration (Batch 7)", () => {
     expect(result.extractedExpenses).toHaveLength(2);
     expect(result.createdExpenses).toHaveLength(2);
     expect(createExpenseToolMock).toHaveBeenCalledTimes(2);
-    expect(result.assistantReply).toContain("₹120.00");
-    expect(result.assistantReply).toContain("₹30.00");
+    expect(result.assistantReply).toContain("₹120");
+    expect(result.assistantReply).toContain("₹30");
     expect(result.assistantReply).not.toContain("1017");
 
     const watermark = computeLastProcessedMessageId({

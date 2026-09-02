@@ -92,4 +92,11 @@ export const expenseController = {
       },
     });
   }),
+
+  listCategories: asyncHandler(async (_req: Request, res: Response) => {
+    res.status(200).json({
+      success: true,
+      data: expenseService.listCategories(),
+    });
+  }),
 };

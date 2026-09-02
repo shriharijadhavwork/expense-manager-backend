@@ -1,11 +1,20 @@
 import { expenseRepository } from "../repositories/expense.repository.js";
 import { messageRepository } from "../repositories/message.repository.js";
+import type { ExpenseDocument } from "../models/expense.model.js";
 import type {
   CreateExpenseInput,
   SearchExpensesInput,
   UpdateExpenseInput,
 } from "../schemas/expense.schema.js";
-import type { ExpenseDocument } from "../models/expense.model.js";
+import {
+  getCategoryTitle,
+  getExpenseCategoryTree,
+  type ExpenseCategory,
+} from "../constants/expense-categories.js";
+import {
+  resolveExpenseDirection,
+  type ExpenseDirection,
+} from "../constants/expense-direction.js";
 import { ApiError } from "../utils/api-error.js";
 import { presentMoney } from "../utils/format-currency.js";
 import { threadService } from "./thread.service.js";
@@ -24,8 +33,11 @@ export type SafeExpense = {
   groupId?: string;
   amount: number;
   currency: string;
+  direction: ExpenseDirection;
   formattedAmount: string;
-  category: string;
+  category: ExpenseCategory;
+  categoryLabel: string;
+  subCategory: string;
   note: string;
   date: string;
   sourceThreadId?: string;
@@ -73,8 +85,11 @@ function toSafeExpense(expense: ExpenseDocument): SafeExpense {
     ...(expense.groupId ? { groupId: String(expense.groupId) } : {}),
     amount: money.amount,
     currency: money.currency,
+    direction: resolveExpenseDirection(expense.direction),
     formattedAmount: money.formattedAmount,
     category: expense.category,
+    categoryLabel: getCategoryTitle(expense.category),
+    subCategory: expense.subCategory,
     note: expense.note,
     date: toDateOnlyString(expense.date),
     ...(expense.sourceThreadId
@@ -94,7 +109,9 @@ export const expenseService = {
       userId,
       amount: input.amount,
       currency: input.currency,
+      direction: input.direction,
       category: input.category,
+      subCategory: input.subCategory,
       note: input.note,
       date: startOfUtcDay(input.date),
     });
@@ -131,7 +148,9 @@ export const expenseService = {
       userId,
       amount: input.amount,
       currency: input.currency,
+      direction: input.direction,
       category: input.category,
+      subCategory: input.subCategory,
       note: input.note,
       date: startOfUtcDay(input.date),
       sourceThreadId: threadId,
@@ -174,7 +193,9 @@ export const expenseService = {
     const updates: {
       amount?: number;
       currency?: string;
-      category?: string;
+      direction?: ExpenseDirection;
+      category?: ExpenseCategory;
+      subCategory?: string;
       note?: string;
       date?: Date;
     } = {};
@@ -185,8 +206,14 @@ export const expenseService = {
     if (input.currency !== undefined) {
       updates.currency = input.currency;
     }
+    if (input.direction !== undefined) {
+      updates.direction = input.direction;
+    }
     if (input.category !== undefined) {
       updates.category = input.category;
+    }
+    if (input.subCategory !== undefined) {
+      updates.subCategory = input.subCategory;
     }
     if (input.note !== undefined) {
       updates.note = input.note;
@@ -226,11 +253,17 @@ export const expenseService = {
     const expenses = await expenseRepository.searchForUser({
       userId,
       ...(input.category !== undefined ? { category: input.category } : {}),
+      ...(input.subCategory !== undefined ? { subCategory: input.subCategory } : {}),
+      ...(input.direction !== undefined ? { direction: input.direction } : {}),
       ...(input.from !== undefined ? { from: startOfUtcDay(input.from) } : {}),
       ...(input.to !== undefined ? { to: endOfUtcDay(input.to) } : {}),
     });
 
     return expenses.map(toSafeExpense);
+  },
+
+  listCategories() {
+    return getExpenseCategoryTree();
   },
 
   async getSpendingSummary(
@@ -259,7 +292,7 @@ export const expenseService = {
         ).formattedAmount;
       } else {
         categories.set(key, {
-          category: expense.category,
+          category: expense.categoryLabel,
           currency: expense.currency,
           amount: expense.amount,
           formattedAmount: expense.formattedAmount,

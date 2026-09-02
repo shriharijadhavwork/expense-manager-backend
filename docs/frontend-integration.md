@@ -66,7 +66,8 @@ See `frontend/docs/landing-page.md` for the full capability matrix and component
 | Auth (signup, login, OTP, forgot/reset password) | `/auth/*` |
 | Personal + group threads, messages | `/threads/*`, `/groups/*` |
 | Realtime message delivery | Socket.IO `message.created` (user, system, and assistant messages) |
-| Expenses CRUD + search | `/expenses`, `/expenses/search` |
+| Expenses CRUD + search | `/expenses`, `/expenses/search`, `GET /expenses/categories` |
+| Expense fields | `direction` (debit/credit), `category` (slug), `categoryLabel` (UI title), `subCategory` (free text) |
 | File attachments | `/files` (Cloudinary) |
 | User preferences (theme, timezone, currency) | `PATCH /auth/me` |
 | FLUX AI assistant (chat) | Debounced LangGraph turn after user message; `role: "assistant"` persisted + pushed over Socket.IO when `GEMINI_API_KEY` set. See `docs/ai-implementation.md` and `frontend/docs/chat.md`. |

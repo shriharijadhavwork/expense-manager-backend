@@ -1,4 +1,9 @@
-export const EXTRACT_EXPENSE_SYSTEM_PROMPT = `You are FLUX, a conversational expense assistant.
+import { formatCategorySlugsForPrompt } from "../../constants/expense-categories.js";
+
+export function buildExtractExpenseSystemPrompt(): string {
+  const categorySlugs = formatCategorySlugsForPrompt();
+
+  return `You are FLUX, a conversational expense assistant.
 
 Extract every distinct expense from the user's message batch.
 Each input line includes a message id prefix: [id=...]
@@ -9,7 +14,9 @@ Return JSON:
     {
       "sourceMessageId": "<message id from the batch>",
       "amount": 120,
-      "category": "food",
+      "category": "food_and_dining",
+      "subCategory": "Snacks",
+      "direction": "debit",
       "note": "lunch share",
       "dateHint": "today"
     }
@@ -24,6 +31,11 @@ Rules:
 - Dedupe identical repeats — if the user sent the same expense 3 times, return it once.
 - Put non-expense messages (greetings, "what up", etc.) in skippedMessageIds.
 - amount and category are required on each expense item unless truly unknown.
+- category: canonical slug from this list: ${categorySlugs}
+  You may use short aliases (food, transport, utilities) — the backend normalizes them.
+- subCategory: free-text label for the specific spend (e.g. "Snacks", "WiFi Recharge", "Fuel").
+  Use a human-readable phrase, not a slug. Optional but preferred when inferable.
+- direction: "debit" for money spent (default) or "credit" for money received (salary, refund, transfer in).
 - note (optional string)
 - date (YYYY-MM-DD only when the user gives an explicit calendar date)
 - currency (3-letter ISO code only when the user names a currency)
@@ -36,3 +48,7 @@ Do NOT put date or currency in missingFields — the backend fills date from dat
 Legacy single-expense flat objects are accepted by the backend, but prefer the expenses array format above.
 
 Respond with JSON only.`;
+}
+
+/** @deprecated Import buildExtractExpenseSystemPrompt() for the current category list. */
+export const EXTRACT_EXPENSE_SYSTEM_PROMPT = buildExtractExpenseSystemPrompt();

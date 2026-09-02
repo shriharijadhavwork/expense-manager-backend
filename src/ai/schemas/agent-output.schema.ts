@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { expenseDirectionSchema } from "../../constants/expense-direction.js";
 
 export const agentIntentSchema = z.enum([
   "create_expense",
@@ -12,6 +13,8 @@ export const agentIntentSchema = z.enum([
 export const expenseDraftSchema = z.object({
   amount: z.number().positive().optional(),
   category: z.string().min(1).optional(),
+  subCategory: z.string().trim().max(100).optional(),
+  direction: expenseDirectionSchema.optional(),
   note: z.string().optional(),
   date: z.string().optional(),
   currency: z.string().length(3).optional(),

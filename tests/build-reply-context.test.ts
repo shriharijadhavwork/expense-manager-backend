@@ -114,8 +114,11 @@ describe("buildReplyContext (Batch B)", () => {
           userId: "507f1f77bcf86cd799439012",
           amount: 120,
           currency: "INR",
+          direction: "debit",
           formattedAmount: "₹120.00",
-          category: "food",
+          category: "food_and_dining",
+          categoryLabel: "Food & Dining",
+          subCategory: "Snacks",
           note: "lunch share",
           date: "2026-09-02",
           sourceThreadId: "507f1f77bcf86cd799439011",
@@ -128,8 +131,11 @@ describe("buildReplyContext (Batch B)", () => {
           userId: "507f1f77bcf86cd799439012",
           amount: 30,
           currency: "INR",
+          direction: "debit",
           formattedAmount: "₹30.00",
           category: "transportation",
+          categoryLabel: "Transportation",
+          subCategory: "Ride Hailing",
           note: "rapido",
           date: "2026-09-02",
           sourceThreadId: "507f1f77bcf86cd799439011",
@@ -148,6 +154,46 @@ describe("buildReplyContext (Batch B)", () => {
       expect(context.outcome.expenses.map((expense) => expense.amount)).toEqual([
         120, 30,
       ]);
+      expect(context.outcome.expenses[0]?.category).toBe("Food & Dining");
+      expect(context.outcome.expenses[1]?.subCategory).toBe("Ride Hailing");
     }
+  });
+
+  it("uses deterministic reply for a single created expense", () => {
+    const context = buildReplyContext({
+      threadId: "507f1f77bcf86cd799439011",
+      userId: "507f1f77bcf86cd799439012",
+      defaultCurrency: "INR",
+      messageBatch: [
+        {
+          id: "507f1f77bcf86cd799439013",
+          role: "user",
+          content: "mark 300 as gone towards parking chagres",
+        },
+      ],
+      recentMessages: [],
+      intent: "create_expense",
+      createdExpense: {
+        id: "6a986fe092b072d54d10cdea",
+        userId: "507f1f77bcf86cd799439012",
+        amount: 300,
+        currency: "INR",
+        direction: "debit",
+        formattedAmount: "300",
+        category: "transportation",
+        categoryLabel: "Transportation",
+        subCategory: "Parking",
+        note: "parking chagres",
+        date: "2026-09-02",
+        sourceThreadId: "507f1f77bcf86cd799439011",
+        sourceMessageId: "507f1f77bcf86cd799439013",
+        createdAt: "2026-09-02T00:00:00.000Z",
+        updatedAt: "2026-09-02T00:00:00.000Z",
+      },
+    });
+
+    expect(context.outcome.outcome).toBe("expense_created");
+    expect(context.useDeterministicReply).toBe(true);
+    expect(context.recentUserMessage).toBe("");
   });
 });

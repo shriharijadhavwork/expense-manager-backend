@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  formatDisplayAmount,
   formatGroupedAmount,
   presentMoney,
+  withCurrencySymbol,
 } from "../src/utils/format-currency.js";
 
 describe("formatGroupedAmount", () => {
@@ -25,6 +27,23 @@ describe("formatGroupedAmount", () => {
 
   it("throws for non-finite amounts", () => {
     expect(() => formatGroupedAmount(Number.NaN, "INR")).toThrow(RangeError);
+  });
+});
+
+describe("withCurrencySymbol", () => {
+  it("prefixes INR amounts", () => {
+    expect(withCurrencySymbol("300", "INR")).toBe("₹300");
+  });
+
+  it("prefixes USD amounts", () => {
+    expect(withCurrencySymbol("15", "USD")).toBe("$15");
+  });
+});
+
+describe("formatDisplayAmount", () => {
+  it("formats INR with symbol and grouping", () => {
+    expect(formatDisplayAmount(300, "INR")).toBe("₹300");
+    expect(formatDisplayAmount(50000, "INR")).toBe("₹50,000");
   });
 });
 

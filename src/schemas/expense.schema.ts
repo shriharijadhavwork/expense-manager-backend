@@ -1,5 +1,10 @@
 import { z } from "zod";
 import { currencySchema } from "../constants/currency.js";
+import {
+  expenseCategorySchema,
+  expenseSubCategorySchema,
+} from "../constants/expense-categories.js";
+import { expenseDirectionSchema } from "../constants/expense-direction.js";
 
 const dateOnlySchema = z
   .string()
@@ -14,10 +19,14 @@ export const createExpenseSchema = z.object({
     .number({ error: "Amount must be a number" })
     .finite("Amount must be a finite number")
     .positive("Amount must be greater than 0"),
-  category: z.string().trim().min(1, "Category is required").transform((value) =>
-    value.toLowerCase(),
-  ),
-  note: z.string().trim().max(1000, "Note must be at most 1000 characters").default(""),
+  category: expenseCategorySchema,
+  subCategory: expenseSubCategorySchema.optional().default(""),
+  direction: expenseDirectionSchema.default("debit"),
+  note: z
+    .string()
+    .trim()
+    .max(1000, "Note must be at most 1000 characters")
+    .default(""),
   date: dateOnlySchema,
   currency: currencySchema,
 });
@@ -29,12 +38,9 @@ export const updateExpenseSchema = z
       .finite("Amount must be a finite number")
       .positive("Amount must be greater than 0")
       .optional(),
-    category: z
-      .string()
-      .trim()
-      .min(1, "Category is required")
-      .transform((value) => value.toLowerCase())
-      .optional(),
+    category: expenseCategorySchema.optional(),
+    subCategory: expenseSubCategorySchema.optional(),
+    direction: expenseDirectionSchema.optional(),
     note: z
       .string()
       .trim()
@@ -47,6 +53,8 @@ export const updateExpenseSchema = z
     (value) =>
       value.amount !== undefined ||
       value.category !== undefined ||
+      value.subCategory !== undefined ||
+      value.direction !== undefined ||
       value.note !== undefined ||
       value.date !== undefined ||
       value.currency !== undefined,
@@ -61,12 +69,9 @@ export const expenseIdParamsSchema = z.object({
 
 export const searchExpensesSchema = z
   .object({
-    category: z
-      .string()
-      .trim()
-      .min(1, "Category cannot be empty")
-      .transform((value) => value.toLowerCase())
-      .optional(),
+    category: expenseCategorySchema.optional(),
+    subCategory: z.string().trim().min(1).max(100).optional(),
+    direction: expenseDirectionSchema.optional(),
     from: dateOnlySchema.optional(),
     to: dateOnlySchema.optional(),
   })

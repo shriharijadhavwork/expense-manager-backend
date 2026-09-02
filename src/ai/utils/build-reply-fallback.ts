@@ -47,7 +47,7 @@ export function buildDeterministicReply(state: FluxGraphState): string {
       if (state.updatedExpense) {
         const expense = state.updatedExpense;
         const note = expense.note ? ` (${expense.note})` : "";
-        return `Updated — ${expense.formattedAmount} for ${expense.category}${note}.`;
+        return `Updated — ${expense.formattedAmount} for ${expense.categoryLabel}${note}.`;
       }
 
       return "I couldn't update that expense. Try being more specific about which one to change.";

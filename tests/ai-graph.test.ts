@@ -55,6 +55,30 @@ function createSequentialProvider(
   };
 }
 
+function mockSafeExpense(
+  overrides: Record<string, unknown> & {
+    id: string;
+    userId: string;
+    amount: number;
+    currency: string;
+    formattedAmount: string;
+    category: string;
+    categoryLabel: string;
+    note: string;
+    date: string;
+    sourceThreadId: string;
+    sourceMessageId: string;
+    createdAt: string;
+    updatedAt: string;
+  },
+) {
+  return {
+    direction: "debit",
+    subCategory: "",
+    ...overrides,
+  };
+}
+
 describe("expense draft utils (Batch 2)", () => {
   it("detects missing required fields", () => {
     expect(
@@ -96,20 +120,23 @@ describe("flux graph (Batch 2)", () => {
   });
 
   it("classifies create_expense, extracts a complete draft, and creates the expense", async () => {
-    createExpenseToolMock.mockResolvedValue({
+    createExpenseToolMock.mockResolvedValue(
+      mockSafeExpense({
       id: "507f1f77bcf86cd799439099",
       userId: "507f1f77bcf86cd799439012",
       amount: 450,
       currency: "INR",
       formattedAmount: "₹450.00",
-      category: "food",
+      category: "food_and_dining",
+      categoryLabel: "Food & Dining",
       note: "lunch",
       date: "2026-09-02",
       sourceThreadId: "507f1f77bcf86cd799439011",
       sourceMessageId: "507f1f77bcf86cd799439013",
       createdAt: "2026-09-02T00:00:00.000Z",
       updatedAt: "2026-09-02T00:00:00.000Z",
-    });
+    }),
+    );
 
     const provider = createSequentialProvider([
       async () => ({ intent: "create_expense" }),
@@ -121,9 +148,6 @@ describe("flux graph (Batch 2)", () => {
           currency: "INR",
           note: "lunch",
         },
-      }),
-      async () => ({
-        reply: "Got it — I've noted your ₹450 lunch under food for today.",
       }),
     ]);
 
@@ -146,7 +170,8 @@ describe("flux graph (Batch 2)", () => {
     expect(result.expenseDraft?.amount).toBe(450);
     expect(result.missingFields).toEqual([]);
     expect(result.createdExpense?.formattedAmount).toBe("₹450.00");
-    expect(result.assistantReply).toContain("noted your ₹450 lunch");
+    expect(result.assistantReply).toContain("₹450");
+    expect(result.assistantReply).toContain("Food & Dining");
     expect(createExpenseToolMock).toHaveBeenCalledOnce();
   });
 
@@ -184,21 +209,24 @@ describe("flux graph (Batch 2)", () => {
     expect(createExpenseToolMock).not.toHaveBeenCalled();
   });
 
-  it("falls back to deterministic reply when build_reply LLM fails", async () => {
-    createExpenseToolMock.mockResolvedValue({
+  it("uses deterministic reply when an expense is created", async () => {
+    createExpenseToolMock.mockResolvedValue(
+      mockSafeExpense({
       id: "507f1f77bcf86cd799439099",
       userId: "507f1f77bcf86cd799439012",
       amount: 450,
       currency: "INR",
-      formattedAmount: "₹450.00",
-      category: "food",
+      formattedAmount: "450",
+      category: "food_and_dining",
+      categoryLabel: "Food & Dining",
       note: "lunch",
       date: "2026-09-02",
       sourceThreadId: "507f1f77bcf86cd799439011",
       sourceMessageId: "507f1f77bcf86cd799439013",
       createdAt: "2026-09-02T00:00:00.000Z",
       updatedAt: "2026-09-02T00:00:00.000Z",
-    });
+    }),
+    );
 
     const provider = createSequentialProvider([
       async () => ({ intent: "create_expense" }),
@@ -211,9 +239,6 @@ describe("flux graph (Batch 2)", () => {
           note: "lunch",
         },
       }),
-      async () => {
-        throw new Error("LLM unavailable");
-      },
     ]);
 
     const graph = createFluxGraph(provider);
@@ -231,7 +256,8 @@ describe("flux graph (Batch 2)", () => {
       recentMessages: [],
     });
 
-    expect(result.assistantReply).toContain("Logged");
+    expect(result.assistantReply).toContain("₹450");
+    expect(result.assistantReply).toContain("Food & Dining");
   });
 
   it("skips extraction for general chat", async () => {
@@ -289,34 +315,42 @@ describe("structured schemas (Batch 2)", () => {
 
   it("creates every complete extracted expense", async () => {
     createExpenseToolMock
-      .mockResolvedValueOnce({
+      .mockResolvedValueOnce(
+        mockSafeExpense({
         id: "507f1f77bcf86cd799439099",
         userId: "507f1f77bcf86cd799439012",
         amount: 120,
         currency: "INR",
         formattedAmount: "₹120.00",
-        category: "food",
+        category: "food_and_dining",
+        categoryLabel: "Food & Dining",
+        subCategory: "Snacks",
         note: "lunch share",
         date: "2026-09-02",
         sourceThreadId: "507f1f77bcf86cd799439011",
         sourceMessageId: "507f1f77bcf86cd799439013",
         createdAt: "2026-09-02T00:00:00.000Z",
         updatedAt: "2026-09-02T00:00:00.000Z",
-      })
-      .mockResolvedValueOnce({
+      }),
+      )
+      .mockResolvedValueOnce(
+        mockSafeExpense({
         id: "507f1f77bcf86cd79943909a",
         userId: "507f1f77bcf86cd799439012",
         amount: 30,
         currency: "INR",
         formattedAmount: "₹30.00",
         category: "transportation",
+        categoryLabel: "Transportation",
+        subCategory: "Ride Hailing",
         note: "rapido",
         date: "2026-09-02",
         sourceThreadId: "507f1f77bcf86cd799439011",
         sourceMessageId: "507f1f77bcf86cd799439014",
         createdAt: "2026-09-02T00:00:00.000Z",
         updatedAt: "2026-09-02T00:00:00.000Z",
-      });
+      }),
+      );
 
     const provider = createSequentialProvider([
       async () => ({ intent: "create_expense" }),

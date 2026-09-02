@@ -1,12 +1,23 @@
 import mongoose, { Schema, type HydratedDocument, type Model } from "mongoose";
 import { DEFAULT_CURRENCY } from "../constants/currency.js";
+import {
+  DEFAULT_EXPENSE_DIRECTION,
+  EXPENSE_DIRECTIONS,
+  type ExpenseDirection,
+} from "../constants/expense-direction.js";
+import {
+  getCategoryTitle,
+  type ExpenseCategory,
+} from "../constants/expense-categories.js";
 
 export interface IExpense {
   userId: mongoose.Types.ObjectId;
   groupId?: mongoose.Types.ObjectId;
   amount: number;
   currency: string;
-  category: string;
+  direction: ExpenseDirection;
+  category: ExpenseCategory;
+  subCategory: string;
   note: string;
   date: Date;
   sourceThreadId?: mongoose.Types.ObjectId;
@@ -46,11 +57,24 @@ const expenseSchema = new Schema<IExpense>(
       maxlength: 3,
       index: true,
     },
+    direction: {
+      type: String,
+      required: true,
+      enum: EXPENSE_DIRECTIONS,
+      default: DEFAULT_EXPENSE_DIRECTION,
+      index: true,
+    },
     category: {
       type: String,
       required: true,
       trim: true,
       lowercase: true,
+      index: true,
+    },
+    subCategory: {
+      type: String,
+      trim: true,
+      default: "",
       index: true,
     },
     note: {
@@ -85,7 +109,9 @@ const expenseSchema = new Schema<IExpense>(
           ...(ret["groupId"] ? { groupId: String(ret["groupId"]) } : {}),
           amount: ret["amount"],
           currency: ret["currency"],
+          direction: ret["direction"],
           category: ret["category"],
+          subCategory: ret["subCategory"],
           note: ret["note"],
           date: ret["date"],
           ...(ret["sourceThreadId"]
@@ -104,6 +130,8 @@ const expenseSchema = new Schema<IExpense>(
 
 expenseSchema.index({ userId: 1, date: -1 });
 expenseSchema.index({ userId: 1, category: 1 });
+expenseSchema.index({ userId: 1, subCategory: 1 });
+expenseSchema.index({ userId: 1, direction: 1 });
 
 export const Expense: ExpenseModel = mongoose.model<IExpense>(
   "Expense",

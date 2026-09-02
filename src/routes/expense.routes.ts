@@ -21,6 +21,8 @@ expenseRouter.post(
 
 expenseRouter.get("/", expenseController.list);
 
+expenseRouter.get("/categories", expenseController.listCategories);
+
 expenseRouter.post(
   "/search",
   validateRequest(searchExpensesSchema),

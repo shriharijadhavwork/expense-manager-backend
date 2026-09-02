@@ -136,7 +136,8 @@ describe("createExpenseTool + graph runner (Batch 3)", () => {
     expect(result.createdExpense).toBeDefined();
     expect(result.createdExpense?.amount).toBe(450);
     expect(result.createdExpense?.sourceMessageId).toBe(messageId);
-    expect(result.assistantReply).toContain("₹450 lunch is saved");
+    expect(result.assistantReply).toContain("₹450");
+    expect(result.assistantReply).toContain("Food & Dining");
 
     const expenses = await request(app)
       .get("/api/v1/expenses")
@@ -144,7 +145,7 @@ describe("createExpenseTool + graph runner (Batch 3)", () => {
       .expect(200);
 
     expect(expenses.body.data).toHaveLength(1);
-    expect(expenses.body.data[0].category).toBe("food");
+    expect(expenses.body.data[0].category).toBe("food_and_dining");
     expect(expenses.body.data[0].amount).toBe(450);
   });
 

@@ -222,7 +222,8 @@ describe("AI chat orchestration (Batch 4)", () => {
       (item: { role: string }) => item.role === "assistant",
     );
 
-    expect(assistant.content).toContain("logged your ₹450 lunch");
+    expect(assistant.content).toContain("₹450");
+    expect(assistant.content).not.toContain("food_and_dining");
     expect(assistant.expenseIds).toHaveLength(1);
 
     const expenses = await request(app)

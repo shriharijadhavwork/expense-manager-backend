@@ -62,6 +62,8 @@ export type SerializedExpense = {
   formattedAmount: string;
   currency: string;
   category: string;
+  subCategory: string;
+  direction: "debit" | "credit";
   note: string;
   date: string;
 };
@@ -82,7 +84,9 @@ function serializeExpense(expense: SafeExpense): SerializedExpense {
     amount: expense.amount,
     formattedAmount: expense.formattedAmount,
     currency: expense.currency,
-    category: expense.category,
+    category: expense.categoryLabel,
+    subCategory: expense.subCategory,
+    direction: expense.direction,
     note: expense.note,
     date: expense.date,
   };
@@ -178,8 +182,8 @@ export function buildReplyContext(state: FluxGraphState): ReplyContextPayload {
           },
           recentUserMessage: "",
           instruction:
-            "Write a friendly confirmation that this expense was recorded. Use only the expense in the outcome.",
-          useDeterministicReply: false,
+            "Confirm exactly the expense listed in the outcome was saved.",
+          useDeterministicReply: true,
         };
       }
 

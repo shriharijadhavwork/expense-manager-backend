@@ -314,6 +314,10 @@ Returns intent, extracted draft(s), `missingFields`, `assistantReply`, and `crea
 
 **Multi-expense (Batch 7):** one message or batch can yield multiple expenses (e.g. "50 on snack and 100 on grocery"). Extraction returns an array; create loops without extra LLM calls; multi-create replies are deterministic (no hallucinated amounts).
 
+**Category taxonomy (Batch A / A.1):** 20 fixed categories in `src/constants/expense-categories.ts`. `category` is stored as a slug; API responses add `categoryLabel` for display. `subCategory` is free text (up to 100 chars); suggestions come from `GET /expenses/categories` but are not enforced.
+
+**AI extraction fields (Batch B):** `extract_expense` asks the model for `category` (slug or alias), optional `subCategory` (human label), and `direction` (`debit` | `credit`). Chat replies use `categoryLabel`, never slugs.
+
 **Persistent AI state (Batch 5):** each thread has a `conversation_ai_states` document (1:1 with thread) tracking `expenseDraft`, `currentIntent`, `missingRequiredFields`, `lastProcessedMessageId` (precise per-message watermark), and optimistic `version`. Incomplete drafts survive across turns; completed expenses clear the draft.
 
 **Financial capabilities (Batch 6):** FLUX can query and update expenses via tools wired into the graph:
@@ -443,9 +447,58 @@ Content-Type: application/json
 
 {
   "amount": 500,
-  "category": "food",
+  "currency": "INR",
+  "direction": "debit",
+  "category": "food_and_dining",
+  "subCategory": "Snacks",
   "note": "Lunch",
   "date": "2026-08-24"
+}
+```
+
+`direction` is `"debit"` (money out, default) or `"credit"` (money in / received).
+
+`category` must be one of the standard slugs (e.g. `food_and_dining`, `transportation`).  
+`subCategory` is free text (e.g. `"Snacks"`, `"WiFi Recharge"`) — suggestions are available from the categories endpoint but any label up to 100 characters is accepted.
+
+Expense responses include `category` (slug) and `categoryLabel` (display title, e.g. `"Food & Dining"`). Never show category slugs in the UI.
+
+Example expense response:
+
+```json
+{
+  "id": "...",
+  "amount": 500,
+  "currency": "INR",
+  "formattedAmount": "500",
+  "direction": "debit",
+  "category": "food_and_dining",
+  "categoryLabel": "Food & Dining",
+  "subCategory": "Snacks",
+  "note": "Lunch",
+  "date": "2026-08-24"
+}
+```
+
+List the full taxonomy (20 fixed categories — code catalog, not a DB collection):
+
+```http
+GET /api/v1/expenses/categories
+Authorization: Bearer <token>
+```
+
+Response items use `slug`, `title`, and `subCategorySuggestions` (hints only; sub-categories are free text on save):
+
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "slug": "food_and_dining",
+      "title": "Food & Dining",
+      "subCategorySuggestions": ["Groceries", "Restaurants", "Snacks", "Other"]
+    }
+  ]
 }
 ```
 
@@ -459,7 +512,9 @@ Authorization: Bearer <token>
 Content-Type: application/json
 
 {
-  "category": "food",
+  "category": "food_and_dining",
+  "subCategory": "Snacks",
+  "direction": "debit",
   "from": "2026-08-01",
   "to": "2026-08-24"
 }

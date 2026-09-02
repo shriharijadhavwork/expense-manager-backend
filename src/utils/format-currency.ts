@@ -67,6 +67,56 @@ export function formatGroupedAmount(
 /** @deprecated Use `formatGroupedAmount` — kept for existing imports. */
 export const formatCurrencyAmount = formatGroupedAmount;
 
+function getCurrencySymbolParts(currency: string): {
+  symbol: string;
+  symbolFirst: boolean;
+} {
+  const normalized = normalizeCurrency(currency);
+  const locale = getLocaleForCurrency(normalized);
+  const parts = new Intl.NumberFormat(locale, {
+    style: "currency",
+    currency: normalized,
+    currencyDisplay: "narrowSymbol",
+  }).formatToParts(1);
+
+  const symbol =
+    parts.find((part) => part.type === "currency")?.value ?? normalized;
+  const symbolIndex = parts.findIndex((part) => part.type === "currency");
+  const numberIndex = parts.findIndex((part) =>
+    ["integer", "decimal", "fraction"].includes(part.type),
+  );
+
+  return {
+    symbol,
+    symbolFirst:
+      symbolIndex >= 0 && numberIndex >= 0 && symbolIndex < numberIndex,
+  };
+}
+
+/** Prefixes/suffixes grouped amount with the locale symbol for the currency. */
+export function withCurrencySymbol(
+  groupedAmount: string,
+  currency: string,
+): string {
+  const { symbol, symbolFirst } = getCurrencySymbolParts(currency);
+
+  if (symbolFirst) {
+    return `${symbol}${groupedAmount}`;
+  }
+
+  return `${groupedAmount}\u00a0${symbol}`;
+}
+
+/** Display amount with symbol for chat replies and UI copy. */
+export function formatDisplayAmount(
+  amount: number,
+  currency: string,
+  options: FormatCurrencyOptions = {},
+): string {
+  const grouped = formatGroupedAmount(amount, currency, options);
+  return withCurrencySymbol(grouped, currency);
+}
+
 /**
  * Builds a structured money object for APIs and future agentic tooling.
  */

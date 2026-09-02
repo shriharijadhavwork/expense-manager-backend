@@ -33,8 +33,11 @@ type ExpenseResponse = {
     userId: string;
     amount: number;
     currency: string;
+    direction: "debit" | "credit";
     formattedAmount: string;
     category: string;
+    categoryLabel: string;
+    subCategory: string;
     note: string;
     date: string;
   };
@@ -47,8 +50,11 @@ type ExpenseListResponse = {
     userId: string;
     amount: number;
     currency: string;
+    direction: "debit" | "credit";
     formattedAmount: string;
     category: string;
+    categoryLabel: string;
+    subCategory: string;
     note: string;
     date: string;
   }>;
@@ -65,6 +71,18 @@ async function signup(
     .expect(201);
 
   return (response.body as AuthResponse).data;
+}
+
+function expenseBody(overrides: Record<string, unknown> = {}) {
+  return {
+    amount: 500,
+    currency: "INR",
+    category: "food_and_dining",
+    subCategory: "Groceries",
+    note: "Lunch",
+    date: "2026-08-24",
+    ...overrides,
+  };
 }
 
 describe("Expense API", () => {
@@ -100,13 +118,7 @@ describe("Expense API", () => {
     const response = await request(app)
       .post("/api/v1/expenses")
       .set("Authorization", `Bearer ${auth.token}`)
-      .send({
-        amount: 500,
-        currency: "INR",
-        category: "Food",
-        note: "Lunch",
-        date: "2026-08-24",
-      })
+      .send(expenseBody({ amount: 500 }))
       .expect(201);
 
     const body = response.body as ExpenseResponse;
@@ -115,10 +127,187 @@ describe("Expense API", () => {
     expect(body.data.amount).toBe(500);
     expect(body.data.currency).toBe("INR");
     expect(body.data.formattedAmount).toBe("500");
-    expect(body.data.category).toBe("food");
+    expect(body.data.category).toBe("food_and_dining");
+    expect(body.data.categoryLabel).toBe("Food & Dining");
+    expect(body.data.subCategory).toBe("Groceries");
     expect(body.data.note).toBe("Lunch");
     expect(body.data.date).toBe("2026-08-24");
+    expect(body.data.direction).toBe("debit");
     expect(body.data).not.toHaveProperty("passwordHash");
+  });
+
+  it("creates a credit expense when direction is provided", async () => {
+    const auth = await signup("Alice", "alice-credit@example.com");
+
+    const response = await request(app)
+      .post("/api/v1/expenses")
+      .set("Authorization", `Bearer ${auth.token}`)
+      .send(
+        expenseBody({
+          amount: 300,
+          direction: "credit",
+          category: "financial",
+          subCategory: "Transfer",
+          note: "received from adarsh",
+          date: "2026-09-02",
+        }),
+      )
+      .expect(201);
+
+    const body = response.body as ExpenseResponse;
+    expect(body.data.amount).toBe(300);
+    expect(body.data.direction).toBe("credit");
+    expect(body.data.category).toBe("financial");
+    expect(body.data.subCategory).toBe("Transfer");
+    expect(body.data.note).toBe("received from adarsh");
+  });
+
+  it("rejects invalid direction values", async () => {
+    const auth = await signup("Alice", "alice-invalid-direction@example.com");
+
+    const response = await request(app)
+      .post("/api/v1/expenses")
+      .set("Authorization", `Bearer ${auth.token}`)
+      .send({
+        amount: 100,
+        currency: "INR",
+        direction: "incoming",
+        category: "food_and_dining",
+        subCategory: "Groceries",
+        date: "2026-09-02",
+      })
+      .expect(400);
+
+    expect(response.body).toMatchObject({
+      success: false,
+    });
+  });
+
+  it("searches expenses by direction", async () => {
+    const auth = await signup("Alice", "alice-direction-search@example.com");
+
+    await request(app)
+      .post("/api/v1/expenses")
+      .set("Authorization", `Bearer ${auth.token}`)
+      .send(
+        expenseBody({
+          amount: 300,
+          direction: "credit",
+          category: "financial",
+          subCategory: "Transfer",
+          note: "received from adarsh",
+          date: "2026-09-02",
+        }),
+      )
+      .expect(201);
+
+    await request(app)
+      .post("/api/v1/expenses")
+      .set("Authorization", `Bearer ${auth.token}`)
+      .send(
+        expenseBody({
+          amount: 50,
+          category: "food_and_dining",
+          subCategory: "Snacks",
+          note: "snack",
+          date: "2026-09-02",
+        }),
+      )
+      .expect(201);
+
+    const credits = await request(app)
+      .post("/api/v1/expenses/search")
+      .set("Authorization", `Bearer ${auth.token}`)
+      .send({ direction: "credit" })
+      .expect(200);
+
+    const creditBody = credits.body as ExpenseListResponse;
+    expect(creditBody.data).toHaveLength(1);
+    expect(creditBody.data[0]?.direction).toBe("credit");
+    expect(creditBody.data[0]?.amount).toBe(300);
+  });
+
+  it("returns the expense category tree", async () => {
+    const auth = await signup("Alice", "alice-categories@example.com");
+
+    const response = await request(app)
+      .get("/api/v1/expenses/categories")
+      .set("Authorization", `Bearer ${auth.token}`)
+      .expect(200);
+
+    expect(response.body.data).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          slug: "food_and_dining",
+          title: "Food & Dining",
+          subCategorySuggestions: expect.arrayContaining(["Snacks"]),
+        }),
+      ]),
+    );
+  });
+
+  it("accepts free-text sub-category regardless of category", async () => {
+    const auth = await signup("Alice", "alice-free-text-subcategory@example.com");
+
+    const response = await request(app)
+      .post("/api/v1/expenses")
+      .set("Authorization", `Bearer ${auth.token}`)
+      .send(
+        expenseBody({
+          category: "food_and_dining",
+          subCategory: "Fuel",
+        }),
+      )
+      .expect(201);
+
+    const body = response.body as ExpenseResponse;
+    expect(body.data.category).toBe("food_and_dining");
+    expect(body.data.subCategory).toBe("Fuel");
+  });
+
+  it("filters expenses by sub-category", async () => {
+    const auth = await signup("Alice", "alice-subcategory-search@example.com");
+
+    await request(app)
+      .post("/api/v1/expenses")
+      .set("Authorization", `Bearer ${auth.token}`)
+      .send(
+        expenseBody({
+          amount: 150,
+          category: "transportation",
+          subCategory: "Fuel",
+          note: "petrol",
+          date: "2026-09-02",
+        }),
+      )
+      .expect(201);
+
+    await request(app)
+      .post("/api/v1/expenses")
+      .set("Authorization", `Bearer ${auth.token}`)
+      .send(
+        expenseBody({
+          amount: 30,
+          category: "transportation",
+          subCategory: "Parking",
+          note: "mall parking",
+          date: "2026-09-02",
+        }),
+      )
+      .expect(201);
+
+    const response = await request(app)
+      .post("/api/v1/expenses/search")
+      .set("Authorization", `Bearer ${auth.token}`)
+      .send({
+        category: "transportation",
+        subCategory: "Fuel",
+      })
+      .expect(200);
+
+    const body = response.body as ExpenseListResponse;
+    expect(body.data).toHaveLength(1);
+    expect(body.data[0]?.subCategory).toBe("Fuel");
   });
 
   it("lists only the authenticated user's expenses", async () => {
@@ -131,7 +320,8 @@ describe("Expense API", () => {
       .send({
         amount: 100,
         currency: "INR",
-        category: "food",
+        category: "food_and_dining",
+        subCategory: "Groceries",
         note: "Alice expense",
         date: "2026-08-10",
       })
@@ -144,6 +334,7 @@ describe("Expense API", () => {
         amount: 200,
         currency: "INR",
         category: "travel",
+        subCategory: "Other",
         note: "Bob expense",
         date: "2026-08-11",
       })
@@ -169,7 +360,8 @@ describe("Expense API", () => {
       .send({
         amount: 75,
         currency: "INR",
-        category: "transport",
+        category: "transportation",
+        subCategory: "Ride Hailing",
         note: "Taxi",
         date: "2026-08-12",
       })
@@ -194,7 +386,8 @@ describe("Expense API", () => {
       .send({
         amount: 50,
         currency: "INR",
-        category: "food",
+        category: "food_and_dining",
+        subCategory: "Groceries",
         note: "Snack",
         date: "2026-08-13",
       })
@@ -215,7 +408,7 @@ describe("Expense API", () => {
     const body = response.body as ExpenseResponse;
     expect(body.data.amount).toBe(80);
     expect(body.data.note).toBe("Updated snack");
-    expect(body.data.category).toBe("food");
+    expect(body.data.category).toBe("food_and_dining");
   });
 
   it("deletes an expense belonging to the authenticated user", async () => {
@@ -227,7 +420,8 @@ describe("Expense API", () => {
       .send({
         amount: 40,
         currency: "INR",
-        category: "food",
+        category: "food_and_dining",
+        subCategory: "Groceries",
         note: "Coffee",
         date: "2026-08-14",
       })
@@ -255,7 +449,8 @@ describe("Expense API", () => {
       .send({
         amount: 10,
         currency: "INR",
-        category: "food",
+        category: "food_and_dining",
+        subCategory: "Groceries",
         note: "A",
         date: "2026-08-01",
       })
@@ -279,7 +474,8 @@ describe("Expense API", () => {
       .send({
         amount: 20,
         currency: "INR",
-        category: "food",
+        category: "food_and_dining",
+        subCategory: "Groceries",
         note: "Food",
         date: "2026-08-02",
       })
@@ -292,6 +488,7 @@ describe("Expense API", () => {
         amount: 30,
         currency: "INR",
         category: "travel",
+        subCategory: "Other",
         note: "Travel",
         date: "2026-08-03",
       })
@@ -300,12 +497,12 @@ describe("Expense API", () => {
     const response = await request(app)
       .post("/api/v1/expenses/search")
       .set("Authorization", `Bearer ${auth.token}`)
-      .send({ category: "food" })
+      .send({ category: "food_and_dining" })
       .expect(200);
 
     const body = response.body as ExpenseListResponse;
     expect(body.data).toHaveLength(1);
-    expect(body.data[0]?.category).toBe("food");
+    expect(body.data[0]?.category).toBe("food_and_dining");
   });
 
   it("filters expenses by date range", async () => {
@@ -322,7 +519,8 @@ describe("Expense API", () => {
         .send({
           amount,
           currency: "INR",
-          category: "food",
+          category: "food_and_dining",
+          subCategory: "Groceries",
           note: date,
           date,
         })
@@ -352,7 +550,8 @@ describe("Expense API", () => {
       .send({
         amount: 10,
         currency: "INR",
-        category: "food",
+        category: "food_and_dining",
+        subCategory: "Groceries",
         note: "in range food",
         date: "2026-08-15",
       })
@@ -365,6 +564,7 @@ describe("Expense API", () => {
         amount: 20,
         currency: "INR",
         category: "travel",
+        subCategory: "Other",
         note: "in range travel",
         date: "2026-08-16",
       })
@@ -376,7 +576,8 @@ describe("Expense API", () => {
       .send({
         amount: 30,
         currency: "INR",
-        category: "food",
+        category: "food_and_dining",
+        subCategory: "Groceries",
         note: "out of range food",
         date: "2026-07-01",
       })
@@ -386,7 +587,8 @@ describe("Expense API", () => {
       .post("/api/v1/expenses/search")
       .set("Authorization", `Bearer ${auth.token}`)
       .send({
-        category: "food",
+        category: "food_and_dining",
+        subCategory: "Groceries",
         from: "2026-08-01",
         to: "2026-08-24",
       })
@@ -406,7 +608,8 @@ describe("Expense API", () => {
       .send({
         amount: 10,
         currency: "USD",
-        category: "food",
+        category: "food_and_dining",
+        subCategory: "Groceries",
         note: "Dollar spend",
         date: "2026-08-24",
       })
@@ -427,7 +630,8 @@ describe("Expense API", () => {
       .send({
         amount: 10,
         currency: "XYZ",
-        category: "food",
+        category: "food_and_dining",
+        subCategory: "Groceries",
         note: "bad currency",
         date: "2026-08-24",
       })
@@ -485,7 +689,8 @@ describe("Expense API", () => {
       .send({
         amount: 10,
         currency: "INR",
-        category: "food",
+        category: "food_and_dining",
+        subCategory: "Groceries",
         note: "x",
         date: "2026-08-01",
       })
@@ -502,7 +707,8 @@ describe("Expense API", () => {
       .send({
         amount: 999,
         currency: "INR",
-        category: "food",
+        category: "food_and_dining",
+        subCategory: "Groceries",
         note: "Alice secret",
         date: "2026-08-20",
       })
@@ -536,7 +742,7 @@ describe("Expense API", () => {
     const searchResponse = await request(app)
       .post("/api/v1/expenses/search")
       .set("Authorization", `Bearer ${bob.token}`)
-      .send({ category: "food" })
+      .send({ category: "food_and_dining" })
       .expect(200);
 
     expect((searchResponse.body as ExpenseListResponse).data).toHaveLength(0);
@@ -557,7 +763,8 @@ describe("Expense API", () => {
       .send({
         amount: 15,
         currency: "INR",
-        category: "food",
+        category: "food_and_dining",
+        subCategory: "Groceries",
         note: "owned by alice",
         date: "2026-08-21",
         userId: bob.user.id,
@@ -607,7 +814,8 @@ describe("Expense API", () => {
       {
         amount: 500,
         currency: "INR",
-        category: "food",
+        category: "food_and_dining",
+        subCategory: "Groceries",
         note: "Lunch",
         date: "2026-08-24",
       },

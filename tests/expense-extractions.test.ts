@@ -14,6 +14,23 @@ function userMessage(
 }
 
 describe("expenseExtractionsSchema", () => {
+  it("accepts subCategory and direction on expense items", () => {
+    const parsed = expenseExtractionsSchema.parse({
+      expenses: [
+        {
+          amount: 5000,
+          category: "financial",
+          subCategory: "Salary",
+          direction: "credit",
+          note: "monthly salary",
+        },
+      ],
+    });
+
+    expect(parsed.expenses[0]?.expenseDraft.subCategory).toBe("Salary");
+    expect(parsed.expenses[0]?.expenseDraft.direction).toBe("credit");
+  });
+
   it("accepts the multi-expense expenses array format", () => {
     const parsed = expenseExtractionsSchema.parse({
       expenses: [
