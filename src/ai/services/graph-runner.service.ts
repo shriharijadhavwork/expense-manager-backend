@@ -7,6 +7,7 @@ import { aiExecutionService } from "./ai-execution.service.js";
 import { aiService } from "./ai.service.js";
 import { contextService } from "./context.service.js";
 import type { SafeConversationAiState } from "../types/conversation-ai-state.js";
+import type { ExtractedExpenseItem } from "../utils/normalize-extracted-expenses.js";
 
 export type GraphRunInput = {
   userId: string;
@@ -23,6 +24,9 @@ export type GraphRunResult = {
   assistantReply: string;
   defaultCurrency: string;
   createdExpense?: SafeExpense;
+  createdExpenses: SafeExpense[];
+  extractedExpenses: ExtractedExpenseItem[];
+  skippedMessageIds: string[];
   error?: string;
 };
 
@@ -59,9 +63,14 @@ async function invokeGraph(input: GraphRunInput): Promise<GraphRunResult> {
     assistantReply:
       result.assistantReply ??
       "I could not generate a reply for that message.",
+    createdExpenses: result.createdExpenses ?? [],
+    extractedExpenses: result.extractedExpenses ?? [],
+    skippedMessageIds: result.skippedMessageIds ?? [],
     ...(result.createdExpense
       ? { createdExpense: result.createdExpense }
-      : {}),
+      : result.createdExpenses?.[0]
+        ? { createdExpense: result.createdExpenses[0] }
+        : {}),
     ...(result.error ? { error: result.error } : {}),
   };
 

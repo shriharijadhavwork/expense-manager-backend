@@ -68,7 +68,7 @@ describe("resolveExpenseDate", () => {
   });
 });
 
-describe("expenseExtractionSchema flat Gemini output", () => {
+describe("expenseExtractionsSchema legacy compatibility", () => {
   it("accepts flat JSON without expenseDraft wrapper", async () => {
     const { expenseExtractionSchema } = await import(
       "../src/ai/schemas/expense-extraction.schema.js"
@@ -81,8 +81,36 @@ describe("expenseExtractionSchema flat Gemini output", () => {
       missingFields: ["date", "currency"],
     });
 
-    expect(parsed.expenseDraft.amount).toBe(12000);
-    expect(parsed.expenseDraft.category).toBe("rent");
+    expect(parsed.expenses[0]?.expenseDraft.amount).toBe(12000);
+    expect(parsed.expenses[0]?.expenseDraft.category).toBe("rent");
+  });
+
+  it("normalizes a single-item array response", async () => {
+    const { expenseExtractionSchema } = await import(
+      "../src/ai/schemas/expense-extraction.schema.js"
+    );
+
+    const parsed = expenseExtractionSchema.parse([
+      { amount: 500, category: "food", note: "lunch" },
+    ]);
+
+    expect(parsed.expenses[0]?.expenseDraft.amount).toBe(500);
+    expect(parsed.expenses[0]?.expenseDraft.category).toBe("food");
+  });
+
+  it("keeps all items when the model returns multiple expenses", async () => {
+    const { expenseExtractionSchema } = await import(
+      "../src/ai/schemas/expense-extraction.schema.js"
+    );
+
+    const parsed = expenseExtractionSchema.parse([
+      { amount: 500, category: "food" },
+      { amount: 200, category: "transport" },
+    ]);
+
+    expect(parsed.expenses).toHaveLength(2);
+    expect(parsed.expenses[0]?.expenseDraft.amount).toBe(500);
+    expect(parsed.expenses[1]?.expenseDraft.amount).toBe(200);
   });
 });
 

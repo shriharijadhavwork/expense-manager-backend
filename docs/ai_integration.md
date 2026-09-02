@@ -1,5 +1,8 @@
 # FLUX Agentic AI Integration — Phase 0 Architecture Audit
 
+> **Status:** Historical design spec (pre-implementation). Principles remain valid; **do not use as current-state reference**.  
+> **Current implementation:** [`ai-implementation.md`](ai-implementation.md).
+
 We are introducing an Agentic AI layer into the existing FLUX backend.
 
 **IMPORTANT: DO NOT IMPLEMENT EVERYTHING IN ONE GO.**

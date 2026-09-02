@@ -156,7 +156,12 @@ describe("AI observability (Batch 7)", () => {
 
   it("persists graph execution with intent and node spans", async () => {
     graphRunnerService.setProvider(
-      createSequentialProvider([async () => ({ intent: "general_chat" })]),
+      createSequentialProvider([
+        async () => ({ intent: "general_chat" }),
+        async () => ({
+          reply: "Hello! I'm FLUX — happy to help track your spending.",
+        }),
+      ]),
     );
 
     const signup = await request(app)
@@ -205,13 +210,19 @@ describe("AI observability (Batch 7)", () => {
         "build_reply",
       ]),
     );
-    expect(record?.llmCalls).toHaveLength(1);
+    expect(record?.llmCalls).toHaveLength(2);
     expect(record?.llmCalls[0]?.callSite).toBe("classify_intent");
+    expect(record?.llmCalls[1]?.callSite).toBe("build_reply");
   });
 
   it("lists executions for a thread via API", async () => {
     graphRunnerService.setProvider(
-      createSequentialProvider([async () => ({ intent: "general_chat" })]),
+      createSequentialProvider([
+        async () => ({ intent: "general_chat" }),
+        async () => ({
+          reply: "Hello! I'm FLUX — happy to help track your spending.",
+        }),
+      ]),
     );
 
     const signup = await request(app)

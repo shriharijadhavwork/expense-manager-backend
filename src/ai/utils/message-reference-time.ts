@@ -16,6 +16,17 @@ export function getReferenceDateFromMessages(messages: SafeMessage[]): Date {
   return new Date(latest.createdAt!);
 }
 
+export function getReferenceDateForMessage(
+  message: SafeMessage | undefined,
+  fallbackMessages: SafeMessage[],
+): Date {
+  if (message?.createdAt) {
+    return new Date(message.createdAt);
+  }
+
+  return getReferenceDateFromMessages(fallbackMessages);
+}
+
 export function joinMessageText(messages: SafeMessage[]): string {
   return messages.map((message) => message.content).join("\n");
 }

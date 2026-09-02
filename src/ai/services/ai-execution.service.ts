@@ -24,6 +24,8 @@ export type RecordLlmCallInput = {
   model: string;
   provider: string;
   durationMs: number;
+  attemptNumber?: number;
+  fallbackFrom?: string;
   promptTokens?: number;
   completionTokens?: number;
   totalTokens?: number;
@@ -203,6 +205,10 @@ export const aiExecutionService = {
       provider: input.provider,
       durationMs: input.durationMs,
       status: input.status,
+      ...(input.attemptNumber !== undefined
+        ? { attemptNumber: input.attemptNumber }
+        : {}),
+      ...(input.fallbackFrom ? { fallbackFrom: input.fallbackFrom } : {}),
       ...(input.promptTokens !== undefined
         ? { promptTokens: input.promptTokens }
         : {}),

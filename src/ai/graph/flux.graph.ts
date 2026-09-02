@@ -8,12 +8,12 @@ import {
   createExtractUpdateNode,
 } from "./nodes/extract-financial.node.js";
 import { createExtractExpenseNode } from "./nodes/extract-expense.node.js";
-import { buildReplyNode } from "./nodes/build-reply.node.js";
+import { createBuildReplyNode } from "./nodes/build-reply.node.js";
 import { loadContextNode } from "./nodes/load-context.node.js";
 import { queryExpensesNode } from "./nodes/query-expenses.node.js";
 import { updateExpenseNode } from "./nodes/update-expense.node.js";
 import { FluxGraphAnnotation, type FluxGraphState } from "./state.js";
-import { isExpenseDraftComplete } from "../utils/expense-draft.js";
+import { hasCreatableExtractedExpenses } from "../utils/normalize-extracted-expenses.js";
 
 type AfterIntentRoute =
   | "extract_expense"
@@ -47,7 +47,11 @@ function routeAfterExtract(
 
   if (
     state.intent === "create_expense" &&
-    isExpenseDraftComplete(state.expenseDraft, state.defaultCurrency)
+    hasCreatableExtractedExpenses({
+      extractedExpenses: state.extractedExpenses,
+      expenseDraft: state.expenseDraft,
+      defaultCurrency: state.defaultCurrency,
+    })
   ) {
     return "create_expense";
   }
@@ -72,6 +76,7 @@ export function createFluxGraph(provider: LlmProvider) {
   const extractExpense = createExtractExpenseNode(provider);
   const extractQuery = createExtractQueryNode(provider);
   const extractUpdate = createExtractUpdateNode(provider);
+  const buildReply = createBuildReplyNode(provider);
 
   return new StateGraph(FluxGraphAnnotation)
     .addNode("load_context", wrapNode("load_context", loadContextNode))
@@ -82,7 +87,7 @@ export function createFluxGraph(provider: LlmProvider) {
     .addNode("create_expense", wrapNode("create_expense", createExpenseNode))
     .addNode("query_expenses", wrapNode("query_expenses", queryExpensesNode))
     .addNode("update_expense", wrapNode("update_expense", updateExpenseNode))
-    .addNode("build_reply", wrapNode("build_reply", buildReplyNode))
+    .addNode("build_reply", wrapNode("build_reply", buildReply))
     .addEdge(START, "load_context")
     .addEdge("load_context", "classify_intent")
     .addConditionalEdges("classify_intent", routeAfterIntent, {

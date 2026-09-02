@@ -1,8 +1,9 @@
 # FLUX Agentic AI — Phase 0 Architecture Audit
 
-> **Status:** Complete. Awaiting explicit approval before Phase 1.
+> **Status:** Historical — Phase 0 complete; Phases 1–7 implemented.  
+> **Current implementation:** see [`ai-implementation.md`](ai-implementation.md) and [`../README.md`](../README.md).
 >
-> **Scope:** Repository inspection + architecture proposal only. No LangGraph, Gemini, or AI packages installed.
+> **Scope:** Repository inspection + architecture proposal only. No LangGraph, Gemini, or AI packages installed *at time of writing*.
 
 ---
 

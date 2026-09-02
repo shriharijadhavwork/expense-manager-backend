@@ -136,6 +136,9 @@ describe("conversation AI state (Batch 5)", () => {
           expenseDraft: { category: "food" },
           missingFields: ["amount"],
         }),
+        async () => ({
+          reply: "Roughly how much was lunch?",
+        }),
         async () => ({ intent: "create_expense" }),
         async () => ({
           expenseDraft: {
@@ -143,6 +146,9 @@ describe("conversation AI state (Batch 5)", () => {
             date: "2026-09-02",
             currency: "INR",
           },
+        }),
+        async () => ({
+          reply: "Perfect — I've saved that ₹450 food expense for you.",
         }),
       ]),
     );
@@ -243,12 +249,11 @@ describe("conversation AI state (Batch 5)", () => {
       threadId,
       userId,
       aiState: await conversationAiStateService.getOrCreate(threadId, userId),
-      messageBatch: [{ id: first.body.data.id }],
+      messageBatch: [{ id: first.body.data.id, content: "first" }],
       result: {
         intent: "general_chat",
         missingFields: [],
         defaultCurrency: "INR",
-        assistantReply: "ok",
       },
     });
 
@@ -267,6 +272,124 @@ describe("conversation AI state (Batch 5)", () => {
 
     expect(batch).toEqual([
       { id: second.body.data.id, content: "second" },
+    ]);
+  });
+
+  it("does not advance the watermark past an unhandled expense message", async () => {
+    const signup = await request(app)
+      .post("/api/v1/auth/signup")
+      .send({
+        name: "Dana",
+        email: "dana-ai-watermark@example.com",
+        password: "password123",
+      })
+      .expect(201);
+
+    const userId = signup.body.data.user.id as string;
+    const token = signup.body.data.token as string;
+
+    const threadResponse = await request(app)
+      .post("/api/v1/threads")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ title: "Watermark" })
+      .expect(201);
+
+    const threadId = threadResponse.body.data.id as string;
+
+    const anchorMessage = await request(app)
+      .post(`/api/v1/threads/${threadId}/messages`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ content: "hello flux" })
+      .expect(201);
+
+    await conversationAiStateService.recordSuccessfulTurn({
+      threadId,
+      userId,
+      aiState: await conversationAiStateService.getOrCreate(threadId, userId),
+      messageBatch: [{ id: anchorMessage.body.data.id, content: "hello flux" }],
+      result: {
+        intent: "general_chat",
+        missingFields: [],
+        defaultCurrency: "INR",
+      },
+    });
+
+    const aiState = await conversationAiStateService.getOrCreate(threadId, userId);
+
+    const lunchMessage = await request(app)
+      .post(`/api/v1/threads/${threadId}/messages`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ content: "i spent 120 for lunch share" })
+      .expect(201);
+
+    const rapidoMessage = await request(app)
+      .post(`/api/v1/threads/${threadId}/messages`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ content: "i spent 30 for rapido today" })
+      .expect(201);
+
+    const updated = await conversationAiStateService.recordSuccessfulTurn({
+      threadId,
+      userId,
+      aiState,
+      messageBatch: [
+        {
+          id: lunchMessage.body.data.id,
+          content: "i spent 120 for lunch share",
+        },
+        {
+          id: rapidoMessage.body.data.id,
+          content: "i spent 30 for rapido today",
+        },
+      ],
+      result: {
+        intent: "create_expense",
+        missingFields: [],
+        defaultCurrency: "INR",
+        extractedExpenses: [
+          {
+            draft: {
+              amount: 30,
+              category: "transportation",
+              note: "rapido",
+              date: "2026-09-02",
+              currency: "INR",
+            },
+            sourceMessageId: rapidoMessage.body.data.id,
+            missingFields: [],
+          },
+        ],
+        createdExpenses: [
+          {
+            id: "created-rapido",
+            sourceMessageId: rapidoMessage.body.data.id,
+            amount: 30,
+            category: "transportation",
+            note: "rapido",
+          },
+        ],
+      },
+    });
+
+    expect(updated).not.toBeNull();
+
+    const afterPartial = await conversationAiStateService.getOrCreate(
+      threadId,
+      userId,
+    );
+
+    expect(afterPartial.lastProcessedMessageId).toBe(anchorMessage.body.data.id);
+
+    const retryBatch = await conversationAiStateService.resolveMessageBatch({
+      threadId,
+      userId,
+      debouncedMessages: [],
+      lastProcessedMessageId: afterPartial.lastProcessedMessageId,
+    });
+
+    expect(retryBatch.map((message) => message.id)).toEqual([
+      lunchMessage.body.data.id,
+      rapidoMessage.body.data.id,
     ]);
   });
 });

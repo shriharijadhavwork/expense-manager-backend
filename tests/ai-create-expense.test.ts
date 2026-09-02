@@ -121,6 +121,9 @@ describe("createExpenseTool + graph runner (Batch 3)", () => {
             note: "lunch",
           },
         }),
+        async () => ({
+          reply: "All set — your ₹450 lunch is saved under food.",
+        }),
       ]),
     );
 
@@ -133,7 +136,7 @@ describe("createExpenseTool + graph runner (Batch 3)", () => {
     expect(result.createdExpense).toBeDefined();
     expect(result.createdExpense?.amount).toBe(450);
     expect(result.createdExpense?.sourceMessageId).toBe(messageId);
-    expect(result.assistantReply).toContain("Logged");
+    expect(result.assistantReply).toContain("₹450 lunch is saved");
 
     const expenses = await request(app)
       .get("/api/v1/expenses")
@@ -143,6 +146,96 @@ describe("createExpenseTool + graph runner (Batch 3)", () => {
     expect(expenses.body.data).toHaveLength(1);
     expect(expenses.body.data[0].category).toBe("food");
     expect(expenses.body.data[0].amount).toBe(450);
+  });
+
+  it("persists multiple expenses from one graph run", async () => {
+    const signup = await request(app)
+      .post("/api/v1/auth/signup")
+      .send({
+        name: "Bob",
+        email: "bob-ai-multi-expense@example.com",
+        password: "password123",
+      })
+      .expect(201);
+
+    const token = signup.body.data.token as string;
+    const userId = signup.body.data.user.id as string;
+
+    const threadResponse = await request(app)
+      .post("/api/v1/threads")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ title: "Batch spend" })
+      .expect(201);
+
+    const threadId = threadResponse.body.data.id as string;
+
+    const lunchMessage = await request(app)
+      .post(`/api/v1/threads/${threadId}/messages`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ content: "i spent 120 for lunch share" })
+      .expect(201);
+
+    const rapidoMessage = await request(app)
+      .post(`/api/v1/threads/${threadId}/messages`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ content: "i spent 30 for rapido today" })
+      .expect(201);
+
+    graphRunnerService.setProvider(
+      createSequentialProvider([
+        async () => ({ intent: "create_expense" }),
+        async () => ({
+          expenses: [
+            {
+              sourceMessageId: lunchMessage.body.data.id,
+              amount: 120,
+              category: "food",
+              note: "lunch share",
+              dateHint: "today",
+            },
+            {
+              sourceMessageId: rapidoMessage.body.data.id,
+              amount: 30,
+              category: "transportation",
+              note: "rapido",
+              dateHint: "today",
+            },
+          ],
+        }),
+        async () => ({
+          reply: "Saved your lunch and rapido expenses.",
+        }),
+      ]),
+    );
+
+    const result = await graphRunnerService.run({
+      userId,
+      threadId,
+      messageBatch: [
+        {
+          id: lunchMessage.body.data.id,
+          content: "i spent 120 for lunch share",
+        },
+        {
+          id: rapidoMessage.body.data.id,
+          content: "i spent 30 for rapido today",
+        },
+      ],
+    });
+
+    expect(result.createdExpenses).toHaveLength(2);
+    expect(
+      result.createdExpenses
+        .map((expense) => expense.amount)
+        .sort((left, right) => left - right),
+    ).toEqual([30, 120]);
+
+    const expenses = await request(app)
+      .get("/api/v1/expenses")
+      .set("Authorization", `Bearer ${token}`)
+      .expect(200);
+
+    expect(expenses.body.data).toHaveLength(2);
   });
 
   it("rejects incomplete drafts in createExpenseTool", async () => {

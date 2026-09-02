@@ -1,15 +1,14 @@
 import { EXTRACT_EXPENSE_SYSTEM_PROMPT } from "../../prompts/extract-expense.prompt.js";
-import { expenseExtractionSchema } from "../../schemas/expense-extraction.schema.js";
+import { expenseExtractionsSchema } from "../../schemas/expense-extractions.schema.js";
 import type { LlmProvider } from "../../types.js";
-import {
-  applyExpenseDefaults,
-  getMissingExpenseFields,
-} from "../../utils/expense-draft.js";
 import { formatMessagesForPrompt, toChatMessages } from "../../utils/format-messages.js";
 import {
   getReferenceDateFromMessages,
-  joinMessageText,
 } from "../../utils/message-reference-time.js";
+import {
+  normalizeExtractedExpenses,
+  pickPrimaryExtractedExpense,
+} from "../../utils/normalize-extracted-expenses.js";
 import type { FluxGraphState } from "../state.js";
 
 export function createExtractExpenseNode(provider: LlmProvider) {
@@ -26,7 +25,6 @@ export function createExtractExpenseNode(provider: LlmProvider) {
       ? JSON.stringify(state.persistedExpenseDraft)
       : "none";
     const referenceAt = getReferenceDateFromMessages(state.messageBatch);
-    const messageText = joinMessageText(state.messageBatch);
 
     const result = await provider.generateStructured({
       system: EXTRACT_EXPENSE_SYSTEM_PROMPT,
@@ -42,26 +40,40 @@ export function createExtractExpenseNode(provider: LlmProvider) {
           content: `Extract expense details from:\n${batch}`,
         },
       ]),
-      schema: expenseExtractionSchema,
+      schema: expenseExtractionsSchema,
       callSite: "extract_expense",
     });
 
-    const mergedDraft = applyExpenseDefaults({
-      draft: {
-        ...state.persistedExpenseDraft,
-        ...result.expenseDraft,
-      },
+    const normalized = normalizeExtractedExpenses({
+      raw: result,
+      messageBatch: state.messageBatch,
       defaultCurrency: state.defaultCurrency,
-      referenceAt,
-      dateHint: result.dateHint,
-      messageText,
+      ...(state.persistedExpenseDraft
+        ? { persistedExpenseDraft: state.persistedExpenseDraft }
+        : {}),
     });
 
-    const missingFields = getMissingExpenseFields(mergedDraft);
+    const primary = pickPrimaryExtractedExpense(normalized.items);
 
     return {
-      expenseDraft: mergedDraft,
-      missingFields,
+      extractedExpenses: normalized.items,
+      skippedMessageIds: normalized.skippedMessageIds,
+      ...(primary
+        ? {
+            expenseDraft: primary.draft,
+            missingFields: primary.missingFields,
+            sourceMessageId: primary.sourceMessageId,
+          }
+        : {
+            expenseDraft: undefined,
+            missingFields: [],
+          }),
+      ...(normalized.items.length > 1
+        ? {
+            multipleExpensesDetected: true,
+            multipleExpenseCount: normalized.items.length,
+          }
+        : {}),
     };
   };
 }

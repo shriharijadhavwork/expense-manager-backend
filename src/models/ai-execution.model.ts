@@ -42,6 +42,8 @@ const llmCallSchema = new Schema<AiLlmCallRecord>(
     model: { type: String, required: true, trim: true },
     provider: { type: String, required: true, trim: true },
     durationMs: { type: Number, required: true, min: 0 },
+    attemptNumber: { type: Number, min: 1 },
+    fallbackFrom: { type: String, trim: true },
     promptTokens: { type: Number, min: 0 },
     completionTokens: { type: Number, min: 0 },
     totalTokens: { type: Number, min: 0 },

@@ -113,6 +113,9 @@ describe("AI chat orchestration (Batch 4)", () => {
     graphRunnerService.setProvider(
       createSequentialProvider([
         async () => ({ intent: "general_chat" }),
+        async () => ({
+          reply: "Hi there! I'm FLUX — ready when you want to log a spend.",
+        }),
       ]),
     );
 
@@ -153,7 +156,7 @@ describe("AI chat orchestration (Batch 4)", () => {
 
     expect(messages.body.data.items).toHaveLength(2);
     expect(messages.body.data.items[1].role).toBe("assistant");
-    expect(messages.body.data.items[1].content).toContain("FLUX");
+    expect(messages.body.data.items[1].content).toContain("ready when you want");
 
     const assistantEvents = received.filter(
       (event) => event.message.role === "assistant",
@@ -174,6 +177,9 @@ describe("AI chat orchestration (Batch 4)", () => {
             currency: "INR",
             note: "lunch",
           },
+        }),
+        async () => ({
+          reply: "Done — I've logged your ₹450 lunch for today.",
         }),
       ]),
     );
@@ -216,7 +222,7 @@ describe("AI chat orchestration (Batch 4)", () => {
       (item: { role: string }) => item.role === "assistant",
     );
 
-    expect(assistant.content).toContain("Logged");
+    expect(assistant.content).toContain("logged your ₹450 lunch");
     expect(assistant.expenseIds).toHaveLength(1);
 
     const expenses = await request(app)
@@ -227,5 +233,82 @@ describe("AI chat orchestration (Batch 4)", () => {
     expect(expenses.body.data).toHaveLength(1);
     expect(expenses.body.data[0].amount).toBe(450);
     expect(expenses.body.data[0].sourceMessageId).toBe(messageId);
+  });
+
+  it("links multiple expense ids on the assistant message", async () => {
+    const signup = await request(app)
+      .post("/api/v1/auth/signup")
+      .send({
+        name: "Cara",
+        email: "cara-ai-multi-chat@example.com",
+        password: "password123",
+      })
+      .expect(201);
+
+    const token = signup.body.data.token as string;
+
+    const threadResponse = await request(app)
+      .post("/api/v1/threads")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ title: "Batch" })
+      .expect(201);
+
+    const threadId = threadResponse.body.data.id as string;
+
+    const lunchMessage = await request(app)
+      .post(`/api/v1/threads/${threadId}/messages`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ content: "i spent 120 for lunch share" })
+      .expect(201);
+
+    const rapidoMessage = await request(app)
+      .post(`/api/v1/threads/${threadId}/messages`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ content: "i spent 30 for rapido today" })
+      .expect(201);
+
+    graphRunnerService.setProvider(
+      createSequentialProvider([
+        async () => ({ intent: "create_expense" }),
+        async () => ({
+          expenses: [
+            {
+              sourceMessageId: lunchMessage.body.data.id,
+              amount: 120,
+              category: "food",
+              note: "lunch share",
+              dateHint: "today",
+            },
+            {
+              sourceMessageId: rapidoMessage.body.data.id,
+              amount: 30,
+              category: "transportation",
+              note: "rapido",
+              dateHint: "today",
+            },
+          ],
+        }),
+      ]),
+    );
+
+    await aiDebounceService.flush(threadId);
+
+    const messages = await request(app)
+      .get(`/api/v1/threads/${threadId}/messages`)
+      .set("Authorization", `Bearer ${token}`)
+      .expect(200);
+
+    const assistant = messages.body.data.items.find(
+      (item: { role: string }) => item.role === "assistant",
+    );
+
+    expect(assistant.expenseIds).toHaveLength(2);
+
+    const expenses = await request(app)
+      .get("/api/v1/expenses")
+      .set("Authorization", `Bearer ${token}`)
+      .expect(200);
+
+    expect(expenses.body.data).toHaveLength(2);
   });
 });

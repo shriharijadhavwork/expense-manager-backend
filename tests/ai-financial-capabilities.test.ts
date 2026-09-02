@@ -135,6 +135,10 @@ describe("financial AI capabilities (Batch 6)", () => {
           to: "2026-09-02",
           mode: "summary",
         }),
+        async () => ({
+          reply:
+            "You spent **₹500** on food across 2 expenses — mostly lunch and snacks.",
+        }),
       ]),
     );
 
@@ -150,7 +154,7 @@ describe("financial AI capabilities (Batch 6)", () => {
     });
 
     expect(result.intent).toBe("query_expenses");
-    expect(result.assistantReply).toContain("500");
+    expect(result.assistantReply).toContain("₹500");
     expect(result.assistantReply).toContain("food");
   });
 
@@ -190,6 +194,9 @@ describe("financial AI capabilities (Batch 6)", () => {
           expenseId: created.id,
           updates: { amount: 350 },
         }),
+        async () => ({
+          reply: "Done — I've updated that lunch expense to **₹350**.",
+        }),
       ]),
     );
 
@@ -205,7 +212,7 @@ describe("financial AI capabilities (Batch 6)", () => {
     });
 
     expect(result.intent).toBe("update_expense");
-    expect(result.assistantReply).toContain("Updated");
+    expect(result.assistantReply).toContain("₹350");
 
     const updated = await expenseService.getById(userId, created.id);
     expect(updated.amount).toBe(350);

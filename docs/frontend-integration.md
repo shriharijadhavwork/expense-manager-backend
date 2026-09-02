@@ -50,13 +50,11 @@ The trust section on `/` reflects **implemented** backend behavior. Maintain thi
 
 ## What the landing page illustrates but does not implement yet
 
-These are **marketing demos only**. The backend does not provide these APIs today:
+These are **marketing demos only** or **partially live** — do not overclaim in copy:
 
-- Natural-language expense extraction from chat messages
-- AI / assistant replies in threads
+- **Partially live:** Natural-language expense extraction — backend AI creates expenses from chat when `GEMINI_API_KEY` is set; landing hero animations remain stylized/illustrative
 - Income, transfers, or running balance aggregation APIs
-- Conversational finance Q&A
-- Automated comparative insights (e.g. “dining up 24% vs last month”)
+- Automated comparative insights (e.g. “dining up 24% vs last month”) — query summaries exist but not comparative analytics
 - Settlement / owe/owed balances (`/app/settlements` is a shell)
 
 See `frontend/docs/landing-page.md` for the full capability matrix and component map.
@@ -67,12 +65,13 @@ See `frontend/docs/landing-page.md` for the full capability matrix and component
 | --- | --- |
 | Auth (signup, login, OTP, forgot/reset password) | `/auth/*` |
 | Personal + group threads, messages | `/threads/*`, `/groups/*` |
-| Realtime message delivery | Socket.IO `message.created` |
+| Realtime message delivery | Socket.IO `message.created` (user, system, and assistant messages) |
 | Expenses CRUD + search | `/expenses`, `/expenses/search` |
 | File attachments | `/files` (Cloudinary) |
 | User preferences (theme, timezone, currency) | `PATCH /auth/me` |
+| FLUX AI assistant (chat) | Debounced LangGraph turn after user message; `role: "assistant"` persisted + pushed over Socket.IO when `GEMINI_API_KEY` set. See `docs/ai-implementation.md` and `frontend/docs/chat.md`. |
 
-Agentic AI responses are **not implemented**; message `role: "assistant"` exists in the schema for future use.
+Conversational Q&A and expense updates via chat are **live** for supported intents (`query_expenses`, `update_expense`). Landing-page “ask FLUX” demos may show capabilities not yet in the app UI.
 
 ## Local full-stack dev
 
@@ -93,6 +92,8 @@ Open `http://localhost:3000/` for the landing page, `/register` to create an acc
 ## Related docs
 
 - API reference: `../README.md`
+- AI implementation: `ai-implementation.md`
 - Landing page implementation: `../../frontend/docs/landing-page.md`
+- Chat UI (frontend): `../../frontend/docs/chat.md`
 - Realtime: `realtime-socketio-plan.md`
 - Email/auth: `email-and-auth-plan.md`

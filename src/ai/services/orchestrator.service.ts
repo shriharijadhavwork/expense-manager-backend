@@ -2,7 +2,9 @@ import { aiConfig } from "../config.js";
 import { conversationAiStateService } from "./conversation-ai-state.service.js";
 import { graphRunnerService } from "./graph-runner.service.js";
 import { aiLogger } from "../observability/ai-logger.js";
+import { recordAiError } from "../observability/record-ai-error.js";
 import { messageService } from "../../services/message.service.js";
+import { getCreatedExpenseIds } from "../utils/format-created-expenses-reply.js";
 
 export type OrchestratorTurnInput = {
   threadId: string;
@@ -47,9 +49,7 @@ export const orchestratorService = {
         return;
       }
 
-      const expenseIds = result.createdExpense
-        ? [result.createdExpense.id]
-        : undefined;
+      const expenseIds = getCreatedExpenseIds(result);
 
       await messageService.createAssistant(
         input.userId,
@@ -75,6 +75,17 @@ export const orchestratorService = {
         });
       }
     } catch (error) {
+      recordAiError({
+        source: "ai_orchestrator",
+        threadId: input.threadId,
+        userId: input.userId,
+        messageId: input.messageBatch.at(-1)?.id,
+        error,
+        requestPayload: {
+          messageCount: input.messageBatch.length,
+          trigger: "orchestrator",
+        },
+      });
       aiLogger.error("ai_orchestrator_failed", {
         threadId: input.threadId,
         userId: input.userId,

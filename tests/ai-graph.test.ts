@@ -122,6 +122,9 @@ describe("flux graph (Batch 2)", () => {
           note: "lunch",
         },
       }),
+      async () => ({
+        reply: "Got it — I've noted your ₹450 lunch under food for today.",
+      }),
     ]);
 
     const graph = createFluxGraph(provider);
@@ -143,7 +146,7 @@ describe("flux graph (Batch 2)", () => {
     expect(result.expenseDraft?.amount).toBe(450);
     expect(result.missingFields).toEqual([]);
     expect(result.createdExpense?.formattedAmount).toBe("₹450.00");
-    expect(result.assistantReply).toContain("Logged");
+    expect(result.assistantReply).toContain("noted your ₹450 lunch");
     expect(createExpenseToolMock).toHaveBeenCalledOnce();
   });
 
@@ -155,6 +158,9 @@ describe("flux graph (Batch 2)", () => {
           category: "food",
         },
         missingFields: ["amount"],
+      }),
+      async () => ({
+        reply: "How much did lunch cost?",
       }),
     ]);
 
@@ -174,13 +180,66 @@ describe("flux graph (Batch 2)", () => {
     });
 
     expect(result.missingFields).toContain("amount");
-    expect(result.assistantReply).toContain("How much");
+    expect(result.assistantReply).toContain("How much did lunch cost");
     expect(createExpenseToolMock).not.toHaveBeenCalled();
+  });
+
+  it("falls back to deterministic reply when build_reply LLM fails", async () => {
+    createExpenseToolMock.mockResolvedValue({
+      id: "507f1f77bcf86cd799439099",
+      userId: "507f1f77bcf86cd799439012",
+      amount: 450,
+      currency: "INR",
+      formattedAmount: "₹450.00",
+      category: "food",
+      note: "lunch",
+      date: "2026-09-02",
+      sourceThreadId: "507f1f77bcf86cd799439011",
+      sourceMessageId: "507f1f77bcf86cd799439013",
+      createdAt: "2026-09-02T00:00:00.000Z",
+      updatedAt: "2026-09-02T00:00:00.000Z",
+    });
+
+    const provider = createSequentialProvider([
+      async () => ({ intent: "create_expense" }),
+      async () => ({
+        expenseDraft: {
+          amount: 450,
+          category: "food",
+          date: "2026-09-02",
+          currency: "INR",
+          note: "lunch",
+        },
+      }),
+      async () => {
+        throw new Error("LLM unavailable");
+      },
+    ]);
+
+    const graph = createFluxGraph(provider);
+    const result = await graph.invoke({
+      threadId: "507f1f77bcf86cd799439011",
+      userId: "507f1f77bcf86cd799439012",
+      defaultCurrency: "INR",
+      messageBatch: [
+        {
+          id: "507f1f77bcf86cd799439013",
+          role: "user",
+          content: "Spent 450 on lunch today",
+        },
+      ],
+      recentMessages: [],
+    });
+
+    expect(result.assistantReply).toContain("Logged");
   });
 
   it("skips extraction for general chat", async () => {
     const provider = createSequentialProvider([
       async () => ({ intent: "general_chat" }),
+      async () => ({
+        reply: "Hey! I'm FLUX — tell me what you spent and I'll keep track.",
+      }),
     ]);
 
     const graph = createFluxGraph(provider);
@@ -200,7 +259,7 @@ describe("flux graph (Batch 2)", () => {
 
     expect(result.intent).toBe("general_chat");
     expect(result.expenseDraft).toBeUndefined();
-    expect(result.assistantReply).toContain("FLUX");
+    expect(result.assistantReply).toContain("keep track");
   });
 });
 
@@ -215,17 +274,115 @@ describe("structured schemas (Batch 2)", () => {
 
   it("validates expense extraction output", () => {
     const parsed = expenseExtractionSchema.parse({
-      expenseDraft: { amount: 10, category: "coffee" },
-      dateHint: "today",
+      expenses: [{ expenseDraft: { amount: 10, category: "coffee" }, dateHint: "today" }],
     });
-    expect(parsed.expenseDraft.amount).toBe(10);
-    expect(parsed.dateHint).toBe("today");
+    expect(parsed.expenses[0]?.expenseDraft.amount).toBe(10);
+    expect(parsed.expenses[0]?.dateHint).toBe("today");
   });
 
   it("rejects invalid extraction payloads", () => {
     const result = expenseExtractionSchema.safeParse({
-      expenseDraft: { amount: -5 },
+      expenses: [{ expenseDraft: { amount: -5 } }],
     });
     expect(result.success).toBe(false);
+  });
+
+  it("creates every complete extracted expense", async () => {
+    createExpenseToolMock
+      .mockResolvedValueOnce({
+        id: "507f1f77bcf86cd799439099",
+        userId: "507f1f77bcf86cd799439012",
+        amount: 120,
+        currency: "INR",
+        formattedAmount: "₹120.00",
+        category: "food",
+        note: "lunch share",
+        date: "2026-09-02",
+        sourceThreadId: "507f1f77bcf86cd799439011",
+        sourceMessageId: "507f1f77bcf86cd799439013",
+        createdAt: "2026-09-02T00:00:00.000Z",
+        updatedAt: "2026-09-02T00:00:00.000Z",
+      })
+      .mockResolvedValueOnce({
+        id: "507f1f77bcf86cd79943909a",
+        userId: "507f1f77bcf86cd799439012",
+        amount: 30,
+        currency: "INR",
+        formattedAmount: "₹30.00",
+        category: "transportation",
+        note: "rapido",
+        date: "2026-09-02",
+        sourceThreadId: "507f1f77bcf86cd799439011",
+        sourceMessageId: "507f1f77bcf86cd799439014",
+        createdAt: "2026-09-02T00:00:00.000Z",
+        updatedAt: "2026-09-02T00:00:00.000Z",
+      });
+
+    const provider = createSequentialProvider([
+      async () => ({ intent: "create_expense" }),
+      async () => ({
+        expenses: [
+          {
+            sourceMessageId: "507f1f77bcf86cd799439013",
+            amount: 120,
+            category: "food",
+            note: "lunch share",
+            dateHint: "today",
+          },
+          {
+            sourceMessageId: "507f1f77bcf86cd799439014",
+            amount: 30,
+            category: "transportation",
+            note: "rapido",
+            dateHint: "today",
+          },
+        ],
+      }),
+      async () => ({
+        reply: "Saved your lunch and rapido expenses.",
+      }),
+    ]);
+
+    const graph = createFluxGraph(provider);
+    const result = await graph.invoke({
+      threadId: "507f1f77bcf86cd799439011",
+      userId: "507f1f77bcf86cd799439012",
+      defaultCurrency: "INR",
+      messageBatch: [
+        {
+          id: "507f1f77bcf86cd799439013",
+          role: "user",
+          content: "i spent 120 for lunch share",
+          createdAt: "2026-09-02T10:00:00.000Z",
+        },
+        {
+          id: "507f1f77bcf86cd799439014",
+          role: "user",
+          content: "i spent 30 for rapido today",
+          createdAt: "2026-09-02T17:00:00.000Z",
+        },
+      ],
+      recentMessages: [],
+    });
+
+    expect(result.extractedExpenses).toHaveLength(2);
+    expect(result.extractedExpenses[0]?.sourceMessageId).toBe(
+      "507f1f77bcf86cd799439013",
+    );
+    expect(result.extractedExpenses[1]?.sourceMessageId).toBe(
+      "507f1f77bcf86cd799439014",
+    );
+    expect(result.multipleExpensesDetected).toBe(true);
+    expect(result.multipleExpenseCount).toBe(2);
+    expect(result.createdExpenses).toHaveLength(2);
+    expect(result.createdExpenses[0]?.amount).toBe(120);
+    expect(result.createdExpenses[1]?.amount).toBe(30);
+    expect(createExpenseToolMock).toHaveBeenCalledTimes(2);
+    expect(createExpenseToolMock.mock.calls[0]?.[0]).toMatchObject({
+      messageId: "507f1f77bcf86cd799439013",
+    });
+    expect(createExpenseToolMock.mock.calls[1]?.[0]).toMatchObject({
+      messageId: "507f1f77bcf86cd799439014",
+    });
   });
 });

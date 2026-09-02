@@ -9,6 +9,8 @@ export type AiLlmCallRecord = {
   model: string;
   provider: string;
   durationMs: number;
+  attemptNumber?: number;
+  fallbackFrom?: string;
   promptTokens?: number;
   completionTokens?: number;
   totalTokens?: number;

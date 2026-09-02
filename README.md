@@ -1,7 +1,8 @@
 # Expense Manager Backend
 
-Frontend-agnostic REST API for **FLUX** — a multi-user expense management application (web client in `../frontend`). Supports authentication, personal and group chat threads, shared groups/membership, expenses (including chat-linked), file attachments, Socket.IO realtime, and a Gemini-backed AI foundation (provider abstraction; agent not wired yet).
+Frontend-agnostic REST API for **FLUX** — a multi-user expense management application (web client in `../frontend`). Supports authentication, personal and group chat threads, shared groups/membership, expenses (including chat-linked), file attachments, Socket.IO realtime, and a Gemini-backed **LangGraph AI agent** (automatic expense extraction, multi-create, query/update, assistant replies).
 
+**AI implementation reference:** [`docs/ai-implementation.md`](docs/ai-implementation.md).  
 **Frontend integration** (landing page, CORS, trust claims, capability matrix): [`docs/frontend-integration.md`](docs/frontend-integration.md).
 
 ## Technology stack
@@ -33,9 +34,18 @@ Copy `.env.example` to `.env` and fill in values:
 | `JWT_SECRET` | Secret used to sign JWTs (min 16 characters) |
 | `JWT_EXPIRES_IN` | Access token lifetime (for example `7d`) |
 | `FRONTEND_URL` | Allowed CORS origin for the frontend (and Socket.IO); use exact app URL, e.g. `http://localhost:3000` |
-| `GEMINI_API_KEY` | Google AI Studio API key for Gemini (optional until AI chat is enabled) |
-| `GEMINI_MODEL` | Gemini model name (default `gemini-2.5-flash`) |
-| `AI_DEBOUNCE_MS` | Debounce window for batched user messages before an AI turn (default `1500`; used in Phase 4) |
+| `GEMINI_API_KEY` | Google AI Studio API key for Gemini (required for AI chat) |
+| `GEMINI_MODEL` | Default Gemini model (default `gemini-2.5-flash`; used for health ping) |
+| `GEMINI_MODEL_LITE` | Lite model for `classify_intent` and `build_reply` (e.g. `gemini-3.1-flash-lite`) |
+| `GEMINI_MODEL_STANDARD` | Standard model for extraction calls (defaults to `GEMINI_MODEL`) |
+| `GEMINI_MODEL_FALLBACK` | Comma-separated fallback chain on retryable LLM errors |
+| `AI_MODEL_FALLBACK_ENABLED` | Enable model fallback chain (default `true`) |
+| `AI_DEBOUNCE_MS` | Debounce window before an AI turn after user messages (default `1500`) |
+| `AI_MAX_BATCH_MESSAGES` | Max user messages batched per AI turn (default `10`, max `50`) |
+| `AI_REPLY_MAX_CHARS` | Max assistant reply length (default `500`) |
+| `AI_LOG_LLM_PAYLOADS` | Log parsed LLM JSON at debug level (default `false`) |
+| `AI_PERSIST_EXECUTIONS` | Persist AI runs to `ai_executions` collection (default `true`) |
+| `ERROR_LOG_PERSIST` | Persist AI/API errors to `error_events` (default `true`) |
 
 `.env` is gitignored and must never be committed.
 
@@ -75,7 +85,8 @@ Base path: `/api/v1`
 | --- | --- | --- | --- |
 | `GET` | `/health` | No | Process health (includes DB connectivity status) |
 | `GET` | `/ai/health` | Bearer JWT | AI provider status; add `?ping=true` to call Gemini (requires `GEMINI_API_KEY`) |
-| `POST` | `/ai/run` | Bearer JWT | Run the LangGraph intent/extraction workflow (no expense write yet) |
+| `POST` | `/ai/run` | Bearer JWT | Run the LangGraph workflow manually (creates expenses when draft is complete; does not persist assistant message) |
+| `GET` | `/ai/executions` | Bearer JWT | List persisted AI executions for a thread (`?threadId=&limit=`) |
 | `POST` | `/auth/signup` | No | Create account, send email OTP, return access token |
 | `POST` | `/auth/login` | No | Login and return access token |
 | `POST` | `/auth/logout` | No | Client-side logout hint |
@@ -182,7 +193,7 @@ Invite links open at `{FRONTEND_URL}/invites/:token` (public preview; accept req
 
 ### Realtime (Socket.IO)
 
-Chat uses **REST to send** messages and **Socket.IO to receive** live updates from other participants.
+Chat uses **REST to send** messages and **Socket.IO to receive** live updates (other participants, system messages, and **FLUX assistant replies**).
 
 | Item | Value |
 | --- | --- |
@@ -240,16 +251,21 @@ For a local catcher (e.g. Mailpit on `1025`), set `EMAIL_PROVIDER=smtp`, `SMTP_H
 
 **DNS / reputation (ops):** before go-live on a real domain, publish SPF and DKIM (and ideally DMARC) for the `EMAIL_FROM` domain so providers accept mail. With AWS SES later, use SES domain verification + DKIM; with SMTP, follow your provider’s DNS instructions.
 
-### AI foundation (Batch 1)
+### AI agent (Batches 1–7)
 
-Gemini provider abstraction lives under `src/ai/`. Chat messages still persist user text only — no LangGraph agent or automatic assistant replies yet.
+Full implementation details: [`docs/ai-implementation.md`](docs/ai-implementation.md).
+
+Gemini + LangGraph live under `src/ai/`. When `GEMINI_API_KEY` is set, posting a user message triggers a debounced AI turn that extracts expenses, creates records, and persists an `assistant` reply delivered over Socket.IO.
 
 **Configure:**
 
 ```bash
 GEMINI_API_KEY=your-key-from-aistudio.google.com
-GEMINI_MODEL=gemini-2.5-flash   # optional
-AI_DEBOUNCE_MS=1500             # optional; used when debounce lands (Phase 4)
+GEMINI_MODEL=gemini-3.6-flash          # optional
+GEMINI_MODEL_LITE=gemini-3.1-flash-lite
+GEMINI_MODEL_STANDARD=gemini-3.6-flash
+AI_DEBOUNCE_MS=1500
+AI_MAX_BATCH_MESSAGES=10
 ```
 
 **Health check (authenticated):**
@@ -292,15 +308,19 @@ Content-Type: application/json
 }
 ```
 
-Returns intent, extracted `expenseDraft`, `missingFields`, and a deterministic `assistantReply`. When the draft is complete, `createExpenseTool` calls `expenseService.createFromChat` and returns `createdExpense`.
+Returns intent, extracted draft(s), `missingFields`, `assistantReply`, and `createdExpense` / `createdExpenses` when expenses are saved.
 
-**Automatic chat flow (Batch 4):** posting a user message schedules a debounced AI turn (`AI_DEBOUNCE_MS`, default `1500`). After the quiet period, FLUX runs the graph, persists one `assistant` message, and publishes it over Socket.IO realtime. No manual `/ai/run` call needed in normal chat.
+**Automatic chat flow (Batch 4+):** posting a user message schedules a debounced AI turn (`AI_DEBOUNCE_MS`, default `1500`). After the quiet period, FLUX runs the graph, persists one `assistant` message (with linked `expenseIds`), and publishes it over Socket.IO. No manual `/ai/run` call needed in normal chat.
 
-**Persistent AI state (Batch 5):** each thread has a `conversation_ai_states` document (1:1 with thread) tracking `expenseDraft`, `currentIntent`, `missingRequiredFields`, `lastProcessedMessageId`, and optimistic `version`. Incomplete drafts survive across turns; completed expenses clear the draft.
+**Multi-expense (Batch 7):** one message or batch can yield multiple expenses (e.g. "50 on snack and 100 on grocery"). Extraction returns an array; create loops without extra LLM calls; multi-create replies are deterministic (no hallucinated amounts).
+
+**Persistent AI state (Batch 5):** each thread has a `conversation_ai_states` document (1:1 with thread) tracking `expenseDraft`, `currentIntent`, `missingRequiredFields`, `lastProcessedMessageId` (precise per-message watermark), and optimistic `version`. Incomplete drafts survive across turns; completed expenses clear the draft.
 
 **Financial capabilities (Batch 6):** FLUX can query and update expenses via tools wired into the graph:
 - `searchExpensesTool` / `spendingSummaryTool` → `expenseService.search` / `getSpendingSummary` (`query_expenses` intent)
 - `updateExpenseTool` → `expenseService.update` (`update_expense` intent)
+
+**Observability (Batch 7):** structured AI logs, optional `ai_executions` persistence, `GET /ai/executions`, and `error_events` for failures. See `docs/ai-implementation.md`.
 
 ### AI context payload (for future agents)
 
@@ -360,7 +380,7 @@ Response:
 
 ### Create thread message
 
-Persists a user message only (no AI/agent response yet — Batch 4 will wire the orchestrator):
+Persists a user message and schedules a debounced AI turn when `GEMINI_API_KEY` is configured. The assistant reply arrives asynchronously via Socket.IO (`message.created`, `role: "assistant"`).
 
 ```http
 POST /api/v1/threads/:id/messages
@@ -484,10 +504,12 @@ Error:
 
 ```text
 src/
+├── ai/              # LangGraph agent, Gemini provider, debounce, orchestrator
 ├── config/          # Env + database
 ├── controllers/     # HTTP adapters
 ├── middlewares/     # Auth, validation, errors
 ├── models/          # Mongoose models
+├── realtime/        # Socket.IO adapter + publish gateway
 ├── repositories/    # Database access
 ├── routes/          # Route wiring
 ├── schemas/         # Zod schemas

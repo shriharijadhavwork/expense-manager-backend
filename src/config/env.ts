@@ -58,9 +58,23 @@ const envSchema = z
     SMTP_PASS: z.string().optional(),
     GEMINI_API_KEY: z.string().trim().optional(),
     GEMINI_MODEL: z.string().trim().min(1).default("gemini-2.5-flash"),
+    GEMINI_MODEL_LITE: z
+      .string()
+      .trim()
+      .min(1)
+      .default("gemini-3.1-flash-lite"),
+    GEMINI_MODEL_STANDARD: z.string().trim().optional(),
+    GEMINI_MODEL_FALLBACK: z
+      .string()
+      .trim()
+      .default("gemini-3.5-flash,gemini-3.1-flash-lite"),
+    AI_MODEL_FALLBACK_ENABLED: booleanFromEnv.default(true),
     AI_DEBOUNCE_MS: z.coerce.number().int().positive().default(1500),
     AI_LOG_LLM_PAYLOADS: booleanFromEnv.default(false),
     AI_PERSIST_EXECUTIONS: booleanFromEnv.default(true),
+    AI_REPLY_MAX_CHARS: z.coerce.number().int().min(80).max(2000).default(500),
+    AI_MAX_BATCH_MESSAGES: z.coerce.number().int().min(1).max(50).default(10),
+    ERROR_LOG_PERSIST: booleanFromEnv.default(true),
   })
   .superRefine((data, ctx) => {
     if (

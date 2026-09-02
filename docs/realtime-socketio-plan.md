@@ -65,7 +65,7 @@ Keep the gateway; add Socket.IO **Redis adapter** when running >1 API process. S
 
 ### R2 — Publish after message persist ✅ done
 
-- After successful `messageService.create` (user + system messages that go through the same path), `realtime.publish({ type: "message.created", … })`
+- After successful `messageService.create` (user messages) and `messageService.createAssistant` (FLUX AI replies), `realtime.publish({ type: "message.created", … })`
 - Ensure group system messages also publish if they create `Message` rows
 - Do **not** change create HTTP request/response contract
 

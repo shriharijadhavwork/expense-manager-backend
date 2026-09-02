@@ -10,6 +10,9 @@ export function toChatMessages(messages: SafeMessage[]): ChatMessage[] {
 
 export function formatMessagesForPrompt(messages: SafeMessage[]): string {
   return messages
-    .map((message) => `${message.role}: ${message.content}`)
+    .map(
+      (message) =>
+        `[id=${message.id}] ${message.role}: ${message.content}`,
+    )
     .join("\n");
 }

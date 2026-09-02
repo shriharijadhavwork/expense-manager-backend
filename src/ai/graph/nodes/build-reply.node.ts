@@ -1,89 +1,109 @@
+import { aiConfig } from "../../config.js";
+import { BUILD_REPLY_SYSTEM_PROMPT } from "../../prompts/build-reply.prompt.js";
+import { createReplyGenerationSchema } from "../../schemas/reply-generation.schema.js";
+import type { LlmProvider } from "../../types.js";
 import {
-  fieldClarificationPrompt,
-  isExpenseDraftComplete,
-} from "../../utils/expense-draft.js";
-import {
-  formatExpenseList,
-  formatSpendingSummary,
-} from "../../utils/format-expense-results.js";
+  buildReplyContext,
+  type ReplyContextPayload,
+} from "../../utils/build-reply-context.js";
+import { buildDeterministicReply } from "../../utils/build-reply-fallback.js";
+import { formatMessagesForPrompt, toChatMessages } from "../../utils/format-messages.js";
+import { sanitizeAssistantReply } from "../../utils/sanitize-assistant-reply.js";
+import { aiLogger } from "../../observability/ai-logger.js";
 import type { FluxGraphState } from "../state.js";
 
-export function buildReplyNode(state: FluxGraphState): Partial<FluxGraphState> {
-  if (state.error) {
-    return {
-      assistantReply:
-        "Something went wrong while processing your message. Please try again.",
-    };
-  }
+export function createBuildReplyNode(provider: LlmProvider) {
+  return async function buildReplyNode(
+    state: FluxGraphState,
+  ): Promise<Partial<FluxGraphState>> {
+    const replyContext = buildReplyContext(state);
 
-  switch (state.intent) {
-    case "create_expense": {
-      if (state.createdExpense) {
-        const expense = state.createdExpense;
-        const note = expense.note ? ` (${expense.note})` : "";
-        return {
-          assistantReply: `Logged ${expense.formattedAmount} for ${expense.category}${note}.`,
-        };
-      }
-
-      if (!isExpenseDraftComplete(state.expenseDraft, state.defaultCurrency)) {
-        const field = state.missingFields[0] ?? "amount";
-        return {
-          assistantReply: fieldClarificationPrompt(field),
-        };
-      }
-
-      return {
-        assistantReply:
-          "I have the expense details but could not save it. Please try again.",
-      };
+    if (replyContext.useDeterministicReply) {
+      const deterministic = buildDeterministicReply(state);
+      aiLogger.info("ai_build_reply_generated", {
+        intent: state.intent,
+        outcome: replyContext.outcome.outcome,
+        replyLength: deterministic.length,
+        mode: "deterministic",
+      });
+      return { assistantReply: deterministic };
     }
-    case "query_expenses": {
-      if (state.spendingSummary) {
-        return {
-          assistantReply: formatSpendingSummary(state.spendingSummary),
-        };
-      }
 
-      if (state.queryResult) {
-        return {
-          assistantReply: formatExpenseList(state.queryResult),
-        };
-      }
-
-      return {
-        assistantReply: "I couldn't look up your expenses. Please try again.",
-      };
+    const generated = await generateReply(provider, state, replyContext);
+    if (generated) {
+      return { assistantReply: generated };
     }
-    case "update_expense": {
-      if (state.updatedExpense) {
-        const expense = state.updatedExpense;
-        const note = expense.note ? ` (${expense.note})` : "";
-        return {
-          assistantReply: `Updated — ${expense.formattedAmount} for ${expense.category}${note}.`,
-        };
-      }
 
-      return {
-        assistantReply:
-          "I couldn't update that expense. Try being more specific about which one to change.",
-      };
+    const fallback = buildDeterministicReply(state);
+    aiLogger.info("ai_build_reply_used_fallback", {
+      intent: state.intent,
+      fallbackLength: fallback.length,
+    });
+    return { assistantReply: fallback };
+  };
+}
+
+async function generateReply(
+  provider: LlmProvider,
+  state: FluxGraphState,
+  replyContext: ReplyContextPayload,
+): Promise<string | null> {
+  try {
+    const recent = formatMessagesForPrompt(state.recentMessages);
+    const schema = createReplyGenerationSchema(aiConfig.replyMaxChars);
+    const userPrompt = replyContext.recentUserMessage.trim()
+      ? `User just said:\n${replyContext.recentUserMessage}\n\n${replyContext.instruction}`
+      : replyContext.instruction;
+
+    const result = await provider.generateStructured({
+      system: BUILD_REPLY_SYSTEM_PROMPT,
+      messages: toChatMessages([
+        {
+          id: "context",
+          role: "system",
+          content: `Intent: ${replyContext.intent}\nStructured outcome:\n${JSON.stringify(replyContext.outcome, null, 2)}\n\nRecent messages:\n${recent || "(none)"}`,
+        },
+        {
+          id: "batch",
+          role: "user",
+          content: userPrompt,
+        },
+      ]),
+      schema,
+      callSite: "build_reply",
+    });
+
+    const sanitized = sanitizeAssistantReply(result.reply);
+    if (!sanitized) {
+      aiLogger.warn("ai_build_reply_empty", {
+        intent: state.intent,
+        outcome: replyContext.outcome.outcome,
+      });
+      return null;
     }
-    case "general_chat":
-      return {
-        assistantReply:
-          "Hi! I'm FLUX. Tell me what you spent and I'll help you track it.",
-      };
-    case "clarification":
-      return {
-        assistantReply:
-          "Thanks — let me use that to finish logging your expense.",
-      };
-    case "unknown":
-    default:
-      return {
-        assistantReply:
-          "I'm not sure I understood. You can tell me what you spent, for example: lunch was 450.",
-      };
+
+    aiLogger.info("ai_build_reply_generated", {
+      intent: state.intent,
+      outcome: replyContext.outcome.outcome,
+      replyLength: sanitized.length,
+      mode: "llm",
+    });
+
+    if (aiConfig.logLlmPayloads) {
+      aiLogger.debug("ai_build_reply_text", {
+        intent: state.intent,
+        outcome: replyContext.outcome.outcome,
+        reply: sanitized,
+      });
+    }
+
+    return sanitized;
+  } catch (error) {
+    aiLogger.warn("ai_build_reply_fallback", {
+      intent: state.intent,
+      outcome: replyContext.outcome.outcome,
+      reason: error instanceof Error ? error.message : String(error),
+    });
+    return null;
   }
 }
