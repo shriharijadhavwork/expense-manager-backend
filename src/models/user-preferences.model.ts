@@ -14,6 +14,8 @@ export interface IUserPreferences {
   theme: ThemePreference;
   timezone: string;
   defaultCurrency: string;
+  /** Denominated in `defaultCurrency`. Null = not configured — never a fake 0. */
+  monthlyIncome: number | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -51,6 +53,11 @@ const userPreferencesSchema = new Schema<IUserPreferences>(
       minlength: 3,
       maxlength: 3,
     },
+    monthlyIncome: {
+      type: Number,
+      default: null,
+      min: 0,
+    },
   },
   {
     timestamps: true,
@@ -62,6 +69,7 @@ const userPreferencesSchema = new Schema<IUserPreferences>(
           theme: ret["theme"],
           timezone: ret["timezone"],
           defaultCurrency: ret["defaultCurrency"],
+          monthlyIncome: ret["monthlyIncome"] ?? null,
           createdAt: ret["createdAt"],
           updatedAt: ret["updatedAt"],
         };

@@ -10,6 +10,7 @@ function toSafeUserPreferences(
     theme: preferences.theme,
     timezone: preferences.timezone,
     defaultCurrency: preferences.defaultCurrency,
+    monthlyIncome: preferences.monthlyIncome ?? null,
   };
 }
 
@@ -27,6 +28,7 @@ export const userPreferencesService = {
       theme?: "light" | "dark" | "system";
       timezone?: string;
       defaultCurrency?: string;
+      monthlyIncome?: number | null;
     } = {};
 
     if (input.preferences.theme !== undefined) {
@@ -37,6 +39,9 @@ export const userPreferencesService = {
     }
     if (input.preferences.defaultCurrency !== undefined) {
       updates.defaultCurrency = input.preferences.defaultCurrency;
+    }
+    if (input.preferences.monthlyIncome !== undefined) {
+      updates.monthlyIncome = input.preferences.monthlyIncome;
     }
 
     const preferences = await userPreferencesRepository.updateForUser(

@@ -2,6 +2,7 @@ export type SafeUserPreferences = {
   theme: "light" | "dark" | "system";
   timezone: string;
   defaultCurrency: string;
+  monthlyIncome: number | null;
 };
 
 export type SafeUser = {

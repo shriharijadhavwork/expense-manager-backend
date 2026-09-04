@@ -187,6 +187,8 @@ Group invite, signup OTP, and password-reset mail all go through the shared `ema
 - `EMAIL_PROVIDER=smtp` — Nodemailer + `SMTP_*` (see `.env.example`)
 - `EMAIL_PROVIDER=ses` — planned (Batch F1)
 
+All three templates share one visual shell (`src/services/email/templates/layout.ts`) — a table-based layout on the same Mercury/Cobalt palette as the app, with a bulletproof pill CTA button, a styled OTP chip, and hidden preheader text. Add a new template by calling `buildTransactionalEmail` + its helpers, not by hand-rolling markup.
+
 Invite links open at `{FRONTEND_URL}/invites/:token` (public preview; accept requires matching signed-in email).
 
 **Realtime:** Socket.IO in-process; REST create publishes `message.created`. Frontend subscribes in chat. See **Realtime (Socket.IO)** below and `docs/realtime-socketio-plan.md`.

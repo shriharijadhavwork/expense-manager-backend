@@ -12,10 +12,18 @@ export const timezonePreferenceSchema = z
     "Timezone must be 'auto' or a valid IANA timezone",
   );
 
+/** Denominated in the user's `defaultCurrency`. `null` clears it (not configured). */
+export const monthlyIncomeSchema = z
+  .number({ error: "Monthly income must be a number" })
+  .finite("Monthly income must be a finite number")
+  .nonnegative("Monthly income cannot be negative")
+  .nullable();
+
 export const userPreferencesSchema = z.object({
   theme: z.enum(THEME_PREFERENCES),
   timezone: timezonePreferenceSchema,
   defaultCurrency: currencySchema,
+  monthlyIncome: monthlyIncomeSchema,
 });
 
 export const updateMeSchema = z
@@ -25,12 +33,14 @@ export const updateMeSchema = z
         theme: z.enum(THEME_PREFERENCES).optional(),
         timezone: timezonePreferenceSchema.optional(),
         defaultCurrency: currencySchema.optional(),
+        monthlyIncome: monthlyIncomeSchema.optional(),
       })
       .refine(
         (value) =>
           value.theme !== undefined ||
           value.timezone !== undefined ||
-          value.defaultCurrency !== undefined,
+          value.defaultCurrency !== undefined ||
+          value.monthlyIncome !== undefined,
         { message: "At least one preference must be provided" },
       ),
   })

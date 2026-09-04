@@ -29,6 +29,7 @@ type AuthResponse = {
         theme: string;
         timezone: string;
         defaultCurrency: string;
+        monthlyIncome: number | null;
       };
     };
     token: string;
@@ -87,6 +88,7 @@ describe("Auth preferences API", () => {
       theme: "system",
       timezone: "auto",
       defaultCurrency: "INR",
+      monthlyIncome: null,
     });
   });
 
@@ -131,6 +133,7 @@ describe("Auth preferences API", () => {
           theme: "dark",
           timezone: "Asia/Kolkata",
           defaultCurrency: "USD",
+          monthlyIncome: 5000,
         },
       })
       .expect(200);
@@ -140,6 +143,7 @@ describe("Auth preferences API", () => {
       theme: "dark",
       timezone: "Asia/Kolkata",
       defaultCurrency: "USD",
+      monthlyIncome: 5000,
     });
 
     const me = await request(app)
@@ -148,6 +152,99 @@ describe("Auth preferences API", () => {
       .expect(200);
 
     expect((me.body as MeResponse).data.preferences.defaultCurrency).toBe("USD");
+    expect((me.body as MeResponse).data.preferences.monthlyIncome).toBe(5000);
+  });
+
+  it("sets and clears monthly income independently of other preferences", async () => {
+    const signup = await request(app)
+      .post("/api/v1/auth/signup")
+      .send({
+        name: "Erin",
+        email: "erin@example.com",
+        password: "password123",
+      })
+      .expect(201);
+
+    const token = (signup.body as AuthResponse).data.token;
+
+    const setResponse = await request(app)
+      .patch("/api/v1/auth/me")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ preferences: { monthlyIncome: 75000 } })
+      .expect(200);
+
+    expect((setResponse.body as PreferencesResponse).data.monthlyIncome).toBe(
+      75000,
+    );
+    // Untouched fields keep their defaults — this update only targeted income.
+    expect((setResponse.body as PreferencesResponse).data.defaultCurrency).toBe(
+      "INR",
+    );
+
+    const clearResponse = await request(app)
+      .patch("/api/v1/auth/me")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ preferences: { monthlyIncome: null } })
+      .expect(200);
+
+    expect(
+      (clearResponse.body as PreferencesResponse).data.monthlyIncome,
+    ).toBeNull();
+  });
+
+  it("rejects negative monthly income", async () => {
+    const signup = await request(app)
+      .post("/api/v1/auth/signup")
+      .send({
+        name: "Frank",
+        email: "frank@example.com",
+        password: "password123",
+      })
+      .expect(201);
+
+    const token = (signup.body as AuthResponse).data.token;
+
+    await request(app)
+      .patch("/api/v1/auth/me")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ preferences: { monthlyIncome: -100 } })
+      .expect(400);
+  });
+
+  it("never exposes one user's monthly income to another user", async () => {
+    const owner = await request(app)
+      .post("/api/v1/auth/signup")
+      .send({
+        name: "Grace",
+        email: "grace@example.com",
+        password: "password123",
+      })
+      .expect(201);
+    const ownerToken = (owner.body as AuthResponse).data.token;
+
+    await request(app)
+      .patch("/api/v1/auth/me")
+      .set("Authorization", `Bearer ${ownerToken}`)
+      .send({ preferences: { monthlyIncome: 90000 } })
+      .expect(200);
+
+    const other = await request(app)
+      .post("/api/v1/auth/signup")
+      .send({
+        name: "Heidi",
+        email: "heidi@example.com",
+        password: "password123",
+      })
+      .expect(201);
+    const otherToken = (other.body as AuthResponse).data.token;
+
+    const otherMe = await request(app)
+      .get("/api/v1/auth/me")
+      .set("Authorization", `Bearer ${otherToken}`)
+      .expect(200);
+
+    // A brand-new user's own income is unset — not the other user's 90000.
+    expect((otherMe.body as MeResponse).data.preferences.monthlyIncome).toBeNull();
   });
 
   it("rejects invalid preference updates", async () => {

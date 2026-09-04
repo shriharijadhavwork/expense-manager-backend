@@ -8,6 +8,7 @@ export type UpdateUserPreferencesRecord = {
   theme?: "light" | "dark" | "system";
   timezone?: string;
   defaultCurrency?: string;
+  monthlyIncome?: number | null;
 };
 
 function toObjectId(id: string): mongoose.Types.ObjectId {

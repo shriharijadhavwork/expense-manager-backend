@@ -157,6 +157,7 @@ src/services/email/
     nodemailer-smtp.provider.ts
     ses.provider.ts             # stub or unimplemented until Batch F
   templates/
+    layout.ts                   # shared shell — table-based, Mercury/Cobalt branded, every template goes through it
     group-invite.ts
     signup-otp.ts
     password-reset.ts
@@ -165,6 +166,8 @@ src/services/email/
 ```
 
 Deprecate direct console logging inside invite as soon as Batch E1 lands.
+
+**Visual design:** all three templates render through `buildTransactionalEmail` in `layout.ts` — a table-based layout (not divs, for reliable Outlook rendering) using the same Onyx/Graphite/Cobalt palette as the app (hardcoded as literal hex — email HTML can't read CSS custom properties; see `frontend/docs/design-system.md`). A new template should call `buildTransactionalEmail` + the `htmlParagraph`/`htmlCta`/`htmlCode`/`htmlMuted` helpers rather than hand-rolling markup, so it inherits the card shell, the pill CTA button, and the hidden preheader text for free.
 
 ---
 
